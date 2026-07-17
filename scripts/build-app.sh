@@ -37,6 +37,9 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN_DIR/$SPREKR_PRODUCT_NAME" "$APP/Contents/MacOS/$SPREKR_PRODUCT_NAME"
 cp "$ROOT/App/Info.plist" "$APP/Contents/Info.plist"
 chmod +x "$APP/Contents/MacOS/$SPREKR_PRODUCT_NAME"
+if [[ "$CONFIGURATION" == "release" ]]; then
+  strip -S "$APP/Contents/MacOS/$SPREKR_PRODUCT_NAME"
+fi
 
 PLIST_BUDDY=/usr/libexec/PlistBuddy
 SPREKR_VERSION_VALUE="${SPREKR_VERSION:-${KLIM_TALKS_VERSION:-}}"
