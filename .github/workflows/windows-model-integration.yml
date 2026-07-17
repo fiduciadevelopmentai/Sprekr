@@ -1,6 +1,12 @@
 name: Windows model integration
 
 on:
+  push:
+    branches: [Windows-gebruikers]
+    paths:
+      - "windows/**"
+      - "global.json"
+      - ".github/workflows/windows-model-integration.yml"
   schedule:
     - cron: "23 3 * * 2"
   workflow_dispatch:
