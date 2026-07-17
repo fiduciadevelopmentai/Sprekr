@@ -93,21 +93,23 @@ final class LocalTranslationService: ObservableObject {
         guard #available(macOS 15.0, *) else { throw LocalTranslationError.unavailable }
         let emailProtection = SpokenEmailFormatter.protectForTranslation(text)
 
-        if #available(macOS 26.0, *) {
-            let source = plan.sourceLanguage.localeLanguage
-            let target = plan.outputLanguage.localeLanguage
-            let availability = await LanguageAvailability().status(from: source, to: target)
-            if availability == .installed {
-                let session = TranslationSession(installedSource: source, target: target)
-                let response = try await session.translate(emailProtection.text)
-                guard let restored = emailProtection.restore(in: response.targetText) else {
-                    throw LocalTranslationError.protectedLiteralChanged
+        #if compiler(>=6.2)
+            if #available(macOS 26.0, *) {
+                let source = plan.sourceLanguage.localeLanguage
+                let target = plan.outputLanguage.localeLanguage
+                let availability = await LanguageAvailability().status(from: source, to: target)
+                if availability == .installed {
+                    let session = TranslationSession(installedSource: source, target: target)
+                    let response = try await session.translate(emailProtection.text)
+                    guard let restored = emailProtection.restore(in: response.targetText) else {
+                        throw LocalTranslationError.protectedLiteralChanged
+                    }
+                    let translated = restored.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !translated.isEmpty else { throw LocalTranslationError.emptyResult }
+                    return translated
                 }
-                let translated = restored.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !translated.isEmpty else { throw LocalTranslationError.emptyResult }
-                return translated
             }
-        }
+        #endif
 
         if let continuation {
             continuation.resume(throwing: LocalTranslationError.superseded)
