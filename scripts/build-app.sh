@@ -26,6 +26,9 @@ done
 if [[ "$CONFIGURATION" == "release" ]]; then
   BUILD_ARGS=(-c release)
 fi
+if [[ -n "${SPREKR_SWIFT_SCRATCH_PATH:-}" ]]; then
+  BUILD_ARGS+=(--scratch-path "$SPREKR_SWIFT_SCRATCH_PATH")
+fi
 
 cd "$ROOT"
 swift build "${BUILD_ARGS[@]}" --product "$SPREKR_PRODUCT_NAME" >&2
