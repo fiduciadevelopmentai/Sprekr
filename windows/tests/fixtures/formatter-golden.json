@@ -1,0 +1,22 @@
+[
+  {
+    "input": "Hoe laat begint de vergadering.",
+    "language": "Dutch",
+    "expected": "Hoe laat begint de vergadering?"
+  },
+  {
+    "input": "What time does the meeting start.",
+    "language": "English",
+    "expected": "What time does the meeting start?"
+  },
+  {
+    "input": "Eerste zin nieuwe alinea tweede zin",
+    "language": "Dutch",
+    "expected": "Eerste zin\n\ntweede zin"
+  },
+  {
+    "input": "is dit veilig vraagteken",
+    "language": "Automatic",
+    "expected": "is dit veilig?"
+  }
+]

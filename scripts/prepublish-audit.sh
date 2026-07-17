@@ -37,7 +37,7 @@ while IFS= read -r legacy_file; do
     .github/workflows/model-integration.yml|\
     AGENTS.md|ARCHITECTURE.md|App/Info.plist|PRIVACY.md|README.md|SECURITY.md|\
     Sources/SprekrCore/SprekrIdentity.swift|Tests/SprekrAppTests/ProductLogicTests.swift|\
-    docs/AGENT_INSTALL.md|docs/RELEASING.md|docs/SECURITY_AUDIT.md|\
+    docs/AGENT_INSTALL.md|docs/RELEASING.md|docs/SECURITY_AUDIT.md|docs/TROUBLESHOOTING.md|\
     scripts/build-app.sh|scripts/doctor.sh|scripts/install.sh|\
     scripts/local-signing-identity.sh|scripts/package.sh|scripts/product-identity.sh|\
     scripts/uninstall.sh|scripts/update.sh)
@@ -55,6 +55,27 @@ done < <(rg -l --hidden \
   || fail "Sparkle remains in Package.resolved."
 /usr/bin/grep -Fq '"version" : "0.15.5"' Package.resolved \
   || fail "FluidAudio is not locked to 0.15.5."
+
+print "== Windows dependency and platform pins =="
+[[ -f global.json && -f windows/Sprekr.sln && -f windows/Directory.Packages.props ]] \
+  || fail "The Windows SDK, solution, or central package configuration is missing."
+/usr/bin/grep -Fq '"version": "10.0.302"' global.json \
+  || fail "The Windows .NET SDK is not pinned to 10.0.302."
+for pin in \
+  'org.k2fsa.sherpa.onnx" Version="[1.13.4]' \
+  'org.k2fsa.sherpa.onnx.runtime.win-x64" Version="[1.13.4]' \
+  'NAudio" Version="[2.3.0]' \
+  'SharpCompress" Version="[0.49.1]'; do
+  /usr/bin/grep -Fq "$pin" windows/Directory.Packages.props \
+    || fail "A reviewed Windows dependency pin changed: $pin"
+done
+[[ "$(find windows -name packages.lock.json -not -path '*/obj/*' | wc -l | tr -d ' ')" == "4" ]] \
+  || fail "Every Windows project must have a committed NuGet lockfile."
+/usr/bin/grep -Fq '487_170_055' windows/src/Sprekr.Windows.Infrastructure/ParakeetModelInstaller.cs \
+  || fail "The Windows Parakeet archive size pin changed."
+/usr/bin/grep -Fq '5793d0fd397c5778d2cf2126994d58e9d56b1be7c04d13c7a15bb1b4eafb16bf' \
+  windows/src/Sprekr.Windows.Infrastructure/ParakeetModelInstaller.cs \
+  || fail "The Windows Parakeet SHA-256 pin changed."
 
 print "== Secret, path, and artifact scan =="
 secret_pattern='AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{20,}|sk-(proj-)?[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY'

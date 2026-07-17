@@ -1,6 +1,6 @@
 # Install Sprekr with a coding agent
 
-Use this exact prompt:
+For macOS, use this exact prompt:
 
 > Install Sprekr from source from this repository. Read AGENTS.md, README.md, and docs/AGENT_INSTALL.md first. Run make doctor, explain any failing requirement without displaying private content, then run ./scripts/install.sh --source. Never use sudo, bypass Gatekeeper, reset TCC permissions, force-quit the app, remove existing Sprekr data, or print transcript, audio, clipboard, or text-field contents. After launch, guide me through the pinned model download, Microphone permission, Accessibility permission, Hold and Toggle controls, and a first dictation.
 
@@ -44,3 +44,19 @@ An agent must:
 8. Never remove data automatically. For a complete local removal, first ask the owner explicitly, then use `./scripts/uninstall.sh --purge` interactively. `--purge --yes` is only for an already owner-approved non-interactive cleanup.
 
 This source-only beta has no official DMG, Homebrew cask, public update feed, or automatic updater. Do not search for or invent those installation paths. `make package` is development verification only.
+
+## Windows 11 x64
+
+Use this exact prompt:
+
+> Install Sprekr on Windows 11 x64 from the `Windows-gebruikers` source branch. Read AGENTS.md, README.md, SECURITY.md, PRIVACY.md and docs/AGENT_INSTALL.md first. Run `.\windows\scripts\doctor-windows.ps1`, explain any failing requirement without showing private content, then run `.\windows\scripts\install-windows.ps1`. Never run as administrator, bypass SmartScreen or Windows integrity controls, change Microphone privacy settings for me, remove `%LOCALAPPDATA%\Sprekr`, or print transcript, audio, clipboard or target-field contents. After launch, guide me through the verified model download, Microphone access, the Hold and Toggle controls, Escape, the six-second Undo window, and a first dictation into a normal non-elevated editable field.
+
+A Windows agent must:
+
+1. Confirm the checkout remote and exact `Windows-gebruikers` branch, then preserve all local changes.
+2. Run the redacted doctor. Require current Windows 11 x64, .NET SDK 10.0.302 x64 and approximately 1.5 GB free.
+3. Run PowerShell as the normal user. Never elevate the shell, installer or Sprekr.
+4. Install only with `install-windows.ps1`. It performs a locked restore and self-contained `win-x64` publish under `%LOCALAPPDATA%\Programs\Sprekr`.
+5. Preserve `%LOCALAPPDATA%\Sprekr` on installs, updates and ordinary uninstall. A purge requires a separate explicit user request and the exact `-PurgeData -ConfirmPurge Sprekr` confirmation.
+6. Explain that the development ZIP is unsigned, that no production MSIX exists, and that disabling SmartScreen or other trust controls is not a supported fix.
+7. Explain expected v1 limitations: no Windows 10/ARM64, no local Dutch/English translation, and no input into elevated administrator targets.

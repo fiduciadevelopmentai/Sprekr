@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <RootNamespace>Sprekr.Windows.App</RootNamespace>
+    <AssemblyName>Sprekr</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>..\..\resources\Sprekr.ico</ApplicationIcon>
+    <PublishSingleFile>false</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <PublishReadyToRun>true</PublishReadyToRun>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Sprekr.Windows.Core\Sprekr.Windows.Core.csproj" />
+    <ProjectReference Include="..\Sprekr.Windows.Infrastructure\Sprekr.Windows.Infrastructure.csproj" />
+    <Resource Include="..\..\resources\Sprekr.ico" Link="Sprekr.ico" />
+    <Content Include="..\..\..\Resources\SprekrStart.aiff" Link="Resources\SprekrStart.aiff" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\..\Resources\SprekrCompletion.aiff" Link="Resources\SprekrCompletion.aiff" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

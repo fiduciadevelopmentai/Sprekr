@@ -9,6 +9,27 @@ import Testing
 
 @Suite("Product logic")
 struct ProductLogicTests {
+    @Test func sharedWindowsFormattingFixturesMatchMacOS() throws {
+        struct Fixture: Decodable {
+            let input: String
+            let language: String
+            let expected: String
+        }
+
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let fixtureURL = repositoryRoot
+            .appending(path: "windows/tests/fixtures/formatter-golden.json")
+        let fixtures = try JSONDecoder().decode([Fixture].self, from: Data(contentsOf: fixtureURL))
+
+        for fixture in fixtures {
+            let language = RecognitionLanguage(rawValue: fixture.language)!
+            #expect(TranscriptFormatter.format(fixture.input, language: language) == fixture.expected)
+        }
+    }
+
     @Test func rebrandPreservesLegacyDataAndMacOSIdentityAnchors() {
         #expect(SprekrIdentity.displayName == "Sprekr")
         #expect(SprekrIdentity.executableName == "Sprekr")

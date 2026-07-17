@@ -1,0 +1,37 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sprekr.Windows.Core", "src\Sprekr.Windows.Core\Sprekr.Windows.Core.csproj", "{0BB8D41C-181D-491A-B80D-2BC3454AB890}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sprekr.Windows.Infrastructure", "src\Sprekr.Windows.Infrastructure\Sprekr.Windows.Infrastructure.csproj", "{6F4AE30D-72F3-4AF8-A60D-C31D6FB54C24}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sprekr.Windows.App", "src\Sprekr.Windows.App\Sprekr.Windows.App.csproj", "{CF4365EC-5CC4-40D8-BBAA-980429C28C97}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sprekr.Windows.Tests", "tests\Sprekr.Windows.Tests\Sprekr.Windows.Tests.csproj", "{A6DB96F7-1CC6-4476-9A00-16CED4D40319}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+		Release|x64 = Release|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{0BB8D41C-181D-491A-B80D-2BC3454AB890}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{0BB8D41C-181D-491A-B80D-2BC3454AB890}.Debug|x64.Build.0 = Debug|Any CPU
+		{0BB8D41C-181D-491A-B80D-2BC3454AB890}.Release|x64.ActiveCfg = Release|Any CPU
+		{0BB8D41C-181D-491A-B80D-2BC3454AB890}.Release|x64.Build.0 = Release|Any CPU
+		{6F4AE30D-72F3-4AF8-A60D-C31D6FB54C24}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{6F4AE30D-72F3-4AF8-A60D-C31D6FB54C24}.Debug|x64.Build.0 = Debug|Any CPU
+		{6F4AE30D-72F3-4AF8-A60D-C31D6FB54C24}.Release|x64.ActiveCfg = Release|Any CPU
+		{6F4AE30D-72F3-4AF8-A60D-C31D6FB54C24}.Release|x64.Build.0 = Release|Any CPU
+		{CF4365EC-5CC4-40D8-BBAA-980429C28C97}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{CF4365EC-5CC4-40D8-BBAA-980429C28C97}.Debug|x64.Build.0 = Debug|Any CPU
+		{CF4365EC-5CC4-40D8-BBAA-980429C28C97}.Release|x64.ActiveCfg = Release|Any CPU
+		{CF4365EC-5CC4-40D8-BBAA-980429C28C97}.Release|x64.Build.0 = Release|Any CPU
+		{A6DB96F7-1CC6-4476-9A00-16CED4D40319}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{A6DB96F7-1CC6-4476-9A00-16CED4D40319}.Debug|x64.Build.0 = Debug|Any CPU
+		{A6DB96F7-1CC6-4476-9A00-16CED4D40319}.Release|x64.ActiveCfg = Release|Any CPU
+		{A6DB96F7-1CC6-4476-9A00-16CED4D40319}.Release|x64.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal

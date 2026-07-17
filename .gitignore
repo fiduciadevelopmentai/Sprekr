@@ -11,9 +11,14 @@ dist/
 *.dSYM
 *.dmg
 *.app
+!windows/src/Sprekr.Windows.App/
 *.partial
 *.part
 .swiftpm/
+**/bin/
+**/obj/
+windows/artifacts/
+.nuget/
 .idea/
 .vscode/
 xcuserdata/

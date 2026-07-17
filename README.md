@@ -2,9 +2,11 @@
 
 **Free and open-source project by Fiducia Development.** Licensed under [Apache-2.0](LICENSE).
 
-Sprekr is a private, fast dictation app for Apple-silicon Macs. Use your talk key from any app, speak naturally, and Sprekr transcribes locally with NVIDIA Parakeet TDT 0.6B v3 before returning the text to where you were writing.
+Sprekr is a private, fast dictation app for Apple-silicon Macs and Windows 11 x64. Use your talk key from another app, speak naturally, and Sprekr transcribes locally with NVIDIA Parakeet TDT 0.6B v3 before returning the text to where you were writing.
 
-> **Source-only beta:** there is no official prebuilt DMG, Homebrew package, Sparkle feed, or notarized binary. Build only from a trusted checkout. The source installer uses one unique local Keychain signing identity so later source updates retain the same macOS app identity.
+> **Source/development beta:** macOS remains source-only; there is no official DMG, Homebrew package, Sparkle feed, or notarized binary. Windows supports a source install and a clearly named, unsigned `development-unsigned` ZIP produced by CI. It is not a production installer. Build only from a trusted checkout.
+
+The production macOS implementation remains isolated in Swift/SwiftUI. Windows development lives on the `Windows-gebruikers` branch as a native WPF app; nothing is merged into `master` until both platform gates pass.
 
 ## Install with a coding agent
 
@@ -16,12 +18,22 @@ The complete agent hand-off and safe fallback instructions are in [docs/AGENT_IN
 
 ## Requirements
 
+### macOS
+
 - Apple-silicon Mac
 - macOS 14 or newer
 - About 1 GB free while the speech model is installed (the required download is roughly 482 MB, with room needed for Core ML and update overhead)
 - Internet for the single model download; no internet is needed for later transcription
 
-Sprekr uses [NVIDIA Parakeet TDT 0.6B v3](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3), converted for Core ML by FluidInference. It supports English, Dutch, and 23 other European languages. No NVIDIA API key, cloud account, or subscription is required.
+### Windows
+
+- An up-to-date Windows 11 x64 installation; Windows 10 and ARM64 are not supported in v1
+- [.NET SDK 10.0.302 x64](https://dotnet.microsoft.com/download/dotnet/10.0) for source/development builds
+- At least approximately 1.5 GB free under `%LOCALAPPDATA%` while the model is downloaded and unpacked
+- Windows Microphone access for desktop apps
+- Internet for the single pinned model download; later transcription is offline
+
+Sprekr uses [NVIDIA Parakeet TDT 0.6B v3](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3). macOS loads the commit-pinned Core ML conversion through FluidAudio; Windows loads the official sherpa-onnx INT8 archive through ONNX. No NVIDIA API key, cloud account, or subscription is required.
 
 ## Feature map
 
@@ -29,7 +41,7 @@ Sprekr uses [NVIDIA Parakeet TDT 0.6B v3](https://huggingface.co/nvidia/parakeet
 | --- | --- |
 | Hold / Toggle / Escape | Hold records while pressed; Toggle starts/stops on separate presses; Escape cancels with a six-second Undo window. |
 | Flow Bar | Non-activating listening, processing, language, Undo, and recovery feedback without stealing focus. |
-| Language and translation | Automatic preserves detected language; Nederlands or English can translate locally with Apple’s framework. |
+| Language and translation | Automatic preserves detected language. macOS can translate locally through Apple’s framework; Windows v1 keeps the source text and explains that local translation is unavailable. |
 | History and Insights | Encrypted local transcripts plus factual, on-device usage metrics. |
 | Dictionary and learning | Encrypted preferred spellings, aliases, bounded fuzzy repair, and optional immediate correction learning. |
 | Smart writing | Local number, symbol, punctuation, stutter, list, and paragraph formatting with conservative safeguards. |
@@ -38,11 +50,11 @@ Sprekr uses [NVIDIA Parakeet TDT 0.6B v3](https://huggingface.co/nvidia/parakeet
 
 ## Privacy
 
-Audio is captured and transcribed on your Mac. Sprekr has no accounts, analytics, telemetry, cloud synchronization, or API keys. Audio is temporary and removed after success, cancellation, or failure. Transcript history and Dictionary entries remain local and are encrypted with a key held in your macOS Keychain. See [PRIVACY.md](PRIVACY.md).
+Audio is captured and transcribed on the device. Sprekr has no accounts, analytics, telemetry, cloud synchronization, or API keys. Audio is temporary and removed after success, cancellation, or failure. Transcript History and Dictionary entries remain local and use AES-GCM; the key is protected by macOS Keychain or Windows DPAPI `CurrentUser`. See [PRIVACY.md](PRIVACY.md).
 
 ## Install
 
-### Source-only beta: build and install from source
+### macOS: build and install from source
 
 Clone the public repository and run the source installer:
 
@@ -63,6 +75,33 @@ mkdir -p "$HOME/Applications"
 
 The source build requires recent Apple Command Line Tools with Swift 6. If they are missing, start Apple's installer with `xcode-select --install`, complete the displayed installation, and rerun the source installer. Full Xcode is not required for this beta.
 
+### Windows 11 x64: source install
+
+Clone the Windows branch from PowerShell, run the read-only doctor, and install without administrator rights:
+
+```powershell
+git clone --branch Windows-gebruikers https://github.com/fiduciadevelopmentai/Sprekr.git
+Set-Location Sprekr
+.\windows\scripts\doctor-windows.ps1
+.\windows\scripts\install-windows.ps1
+```
+
+The installer performs a locked NuGet restore, publishes a self-contained `win-x64` app to `%LOCALAPPDATA%\Programs\Sprekr`, and creates a per-user Start-menu shortcut. Models, settings, encrypted History/Dictionary and DPAPI-protected keys stay under `%LOCALAPPDATA%\Sprekr` and are preserved during updates. Do not start PowerShell, the installer, or Sprekr as administrator.
+
+Start a development checkout without installing it:
+
+```powershell
+.\windows\scripts\run-windows.ps1
+```
+
+Build the unsigned development ZIP locally:
+
+```powershell
+.\windows\scripts\build-development-unsigned.ps1
+```
+
+The ZIP and `.sha256` file appear under `windows\artifacts`. Because this v1 artifact is unsigned, Windows may show a trust warning; no Gatekeeper/SmartScreen bypass is recommended or automated. A trusted code-signing certificate and production MSIX are intentionally outside v1.
+
 ### Development commands
 
 The current project builds locally with macOS Command Line Tools and Swift 6. Full Xcode is still needed later for Xcode archives and Apple signing workflows:
@@ -79,7 +118,24 @@ make run
 
 `make package` produces a **`development-adhoc` DMG** for local verification only; it is deliberately isolated under the development bundle identifier and must never be presented as an official download. `make doctor` is read-only and redacted. `make audit` runs the complete local publication gate. See [docs/RELEASING.md](docs/RELEASING.md).
 
+Windows development and test commands:
+
+```powershell
+Set-Location windows
+dotnet restore .\Sprekr.sln --locked-mode --configfile .\NuGet.Config
+dotnet build .\Sprekr.sln --configuration Release --no-restore
+dotnet test .\tests\Sprekr.Windows.Tests\Sprekr.Windows.Tests.csproj --configuration Release --no-build
+```
+
+FFmpeg is not required. sherpa-onnx supplies the Windows x64 ONNX runtime, NAudio uses WASAPI for recording/playback/resampling, and SharpCompress extracts the pinned `.tar.bz2` model archive.
+
 ## First launch
+
+On Windows, start Sprekr from the Start menu, download the pinned model, choose a microphone and leave the target application focused. F8 and mouse button 4 are available as global controls: Hold records while pressed, while Toggle starts on one press and stops on the next. Escape cancels and Ctrl+Z restores the cancelled recording for six seconds. The non-activating WPF Flow Bar never takes keyboard focus.
+
+Windows uses UI Automation only to classify the focused target and to inspect at most 64 characters immediately before the caret after a write. Password, disabled, read-only, non-editable and elevated administrator targets are refused. Text is sent as Unicode without reading or replacing the clipboard, and an indeterminate write is never retried. Windows integrity levels prevent a normal desktop app from inserting into an elevated app; this is an intentional security boundary.
+
+The detailed onboarding sequence below describes the established macOS app:
 
 The onboarding explains each step and can be completed with the keyboard:
 
@@ -129,6 +185,14 @@ Settings uses four focused pages: General for independent Hold and Toggle keys, 
 
 ## Updates and uninstall
 
+On Windows, pull a clean `Windows-gebruikers` checkout and rerun `.\windows\scripts\install-windows.ps1`; installed binaries are replaced transactionally while `%LOCALAPPDATA%\Sprekr` is preserved. The normal uninstall also preserves local data:
+
+```powershell
+.\windows\scripts\uninstall-windows.ps1
+```
+
+Permanent Windows data removal requires the explicit command `.\windows\scripts\uninstall-windows.ps1 -PurgeData -ConfirmPurge Sprekr`. This removes only the Windows data root `%LOCALAPPDATA%\Sprekr`; it never touches the legacy macOS data root.
+
 The source-only beta does not use automatic or package-manager updates. To update a source installation, pull the latest source and run the source updater:
 
 ```sh
@@ -146,16 +210,19 @@ For a full uninstall, use `make uninstall`; it will separately ask whether you w
 
 ## Troubleshooting
 
-Start with `make doctor`. The full privacy-safe decision tree is in [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
+Start on macOS with `make doctor`; start on Windows with `.\windows\scripts\doctor-windows.ps1`. The full privacy-safe decision tree is in [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
 
 - **No waveform:** select a microphone in Settings and allow Microphone access.
 - **Transcript was not inserted:** allow Accessibility access; the text remains in History and the clipboard fallback is available.
 - **Model cannot download:** free enough disk space, reconnect temporarily, and retry; incomplete downloads resume safely.
 - **Offline transcription fails:** ensure the model finished downloading and has not been removed in Settings.
 - **Talk key does nothing:** allow Accessibility, then check the separate Hold and Toggle keys in General Settings and retry Talk key access in System Settings.
+- **Windows native runtime missing:** reinstall from the locked source checkout so `org.k2fsa.sherpa.onnx.runtime.win-x64` is restored and published.
+- **Windows insertion refused:** use a normal, non-elevated editable field; never run Sprekr as administrator.
+- **Windows translation notice:** expected in v1; Automatic and explicit language selections preserve the original locally transcribed text.
 
 ## Development
 
-Sprekr is Swift 6, SwiftUI, and AppKit. See [ARCHITECTURE.md](ARCHITECTURE.md), [DESIGN.md](DESIGN.md), and [CONTRIBUTING.md](CONTRIBUTING.md). Runtime and model acknowledgements are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Sprekr uses Swift 6/SwiftUI/AppKit on macOS and .NET 10/WPF on Windows. The platform applications share behavior contracts and golden formatting fixtures but do not share native audio, model, lifecycle, permission or text-delivery implementations. See [ARCHITECTURE.md](ARCHITECTURE.md), [DESIGN.md](DESIGN.md), and [CONTRIBUTING.md](CONTRIBUTING.md). Runtime and model acknowledgements are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 The project is licensed under [Apache-2.0](LICENSE). This beta intentionally uses locally built source installations instead of a prebuilt Developer ID-signed download. Release gates are documented in [docs/RELEASING.md](docs/RELEASING.md).

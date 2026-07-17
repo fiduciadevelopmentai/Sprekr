@@ -12,6 +12,17 @@
 - **Dependencies:** FluidAudio is pinned to an exact release. Dependency changes require review, test, and a notice update.
 - **Updates:** the beta is source-only. `install.sh --source` and `update.sh --source` are the only supported paths. Local `development-adhoc` DMGs are never official release artifacts.
 
+## Windows controls
+
+- **Supported boundary:** Windows v1 supports current Windows 11 x64 only. The app manifest is `asInvoker`; source installers and Sprekr must never run as administrator. Windows integrity levels intentionally prevent injection into elevated targets.
+- **Model integrity:** Windows pins the official sherpa-onnx Parakeet TDT 0.6B v3 INT8 archive to 487,170,055 bytes and SHA-256 `5793d0fd397c5778d2cf2126994d58e9d56b1be7c04d13c7a15bb1b4eafb16bf`. Downloads resume, retry once, reject path traversal and activate only after verification.
+- **Native runtime:** `org.k2fsa.sherpa.onnx` and `org.k2fsa.sherpa.onnx.runtime.win-x64` are exact `1.13.4`; NAudio is `2.3.0`; SharpCompress is `0.49.1`. Central package versions and committed lockfiles are mandatory.
+- **Local data:** History and Dictionary use AES-GCM with separate random keys protected by Windows DPAPI `CurrentUser`. Missing/unopenable keys above existing ciphertext stop access and never cause replacement-key generation.
+- **Temporary audio:** WASAPI recordings are written only below `%LOCALAPPDATA%\Sprekr\Temporary Audio` and removed after every normal success, failure, cancellation expiry and Undo path. The removal service refuses paths outside that root.
+- **Text delivery:** UI Automation is classification-only apart from a maximum 64-character range immediately preceding the caret for bounded verification. Password, disabled, read-only, non-editable, self and elevated targets are refused. Unicode `SendInput` is attempted once; an indeterminate result is never retried. The Windows clipboard is not read or overwritten.
+- **Global input:** low-level keyboard/mouse hooks live on their own message thread, ignore injected events, and restart after resume and unlock. Escape and the six-second Ctrl+Z recovery window use the same state machine as keyboard and mouse controls.
+- **Artifacts:** CI may publish `Sprekr-windows-x64-development-unsigned.zip` plus SHA-256 for development testing. It is not an official signed release, MSIX or production installer.
+
 ## Reporting
 
 Use [GitHub Private Vulnerability Reporting](https://github.com/fiduciadevelopmentai/Sprekr/security/advisories/new). Do not open a public issue for a suspected vulnerability, and never include transcripts, audio, clipboard content, tokens, private keys, or Keychain material. If Private Vulnerability Reporting is unavailable before publication, contact the owner privately and share only a minimal redacted reproduction.

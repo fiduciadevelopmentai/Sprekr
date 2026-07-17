@@ -1,0 +1,112 @@
+<Window x:Class="Sprekr.Windows.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Sprekr" Width="960" Height="680" MinWidth="780" MinHeight="560"
+        Icon="Sprekr.ico" Background="#F7F6F2">
+    <Grid Margin="28">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <DockPanel Margin="0,0,0,20">
+            <Image Source="Sprekr.ico" Width="42" Height="42" Margin="0,0,12,0" />
+            <StackPanel>
+                <TextBlock Text="Sprekr" FontSize="28" FontWeight="Bold" Foreground="#202128" />
+                <TextBlock Text="Lokale spraak-naar-tekst voor Windows" Foreground="#686872" />
+            </StackPanel>
+        </DockPanel>
+
+        <TabControl Grid.Row="1" Background="White" Padding="8">
+            <TabItem Header="Home">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="22" MaxWidth="720" HorizontalAlignment="Left">
+                        <TextBlock Text="Offline dicteren" FontSize="22" FontWeight="SemiBold" />
+                        <TextBlock Margin="0,8,0,16" TextWrapping="Wrap"
+                                   Text="Houd F8 of muisknop 4 ingedrukt in Hold-modus. In Toggle-modus start en stopt dezelfde knop de opname. Escape annuleert; Ctrl+Z herstelt binnen zes seconden." />
+                        <Border Background="#F1EEFF" CornerRadius="10" Padding="16" Margin="0,0,0,16">
+                            <StackPanel>
+                                <TextBlock Text="Parakeet TDT 0.6B v3 INT8" FontWeight="SemiBold" />
+                                <TextBlock x:Name="ModelStatusText" Margin="0,4,0,8" Text="Modelstatus controleren…" />
+                                <ProgressBar x:Name="ModelProgress" Height="8" Minimum="0" Maximum="100" Visibility="Collapsed" />
+                                <Button x:Name="DownloadModelButton" Content="Download en verifieer model" HorizontalAlignment="Left" Click="DownloadModel_Click" />
+                            </StackPanel>
+                        </Border>
+                        <TextBlock Text="Microfoon" FontWeight="SemiBold" />
+                        <ComboBox x:Name="MicrophoneCombo" Width="480" HorizontalAlignment="Left"
+                                  DisplayMemberPath="Name" SelectionChanged="Settings_Changed" />
+                        <Button Content="Microfoons vernieuwen" HorizontalAlignment="Left" Click="RefreshMicrophones_Click" />
+                        <TextBlock Margin="0,18,0,0" Foreground="#686872" TextWrapping="Wrap"
+                                   Text="Automatic houdt de herkende taal aan. Bij expliciet Nederlands of Engels blijft Windows v1 veilig bij de brontekst, omdat lokale vertaling nog niet beschikbaar is." />
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <TabItem Header="History">
+                <Grid Margin="22">
+                    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                    <DockPanel Margin="0,0,0,12">
+                        <TextBlock Text="Versleutelde lokale History" FontSize="22" FontWeight="SemiBold" />
+                        <Button Content="Vernieuwen" DockPanel.Dock="Right" Click="RefreshData_Click" />
+                    </DockPanel>
+                    <ListBox x:Name="HistoryList" Grid.Row="1" BorderThickness="0">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Border BorderBrush="#E6E3DC" BorderThickness="0,0,0,1" Padding="4,12">
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding Text}" TextWrapping="Wrap" />
+                                        <TextBlock Text="{Binding CreatedAt}" Foreground="#777780" FontSize="11" Margin="0,5,0,0" />
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="Insights">
+                <StackPanel Margin="22">
+                    <TextBlock Text="Lokale inzichten" FontSize="22" FontWeight="SemiBold" />
+                    <UniformGrid Columns="3" Margin="0,18,0,0">
+                        <Border Background="#F1EEFF" CornerRadius="10" Padding="18" Margin="0,0,10,10"><StackPanel><TextBlock Text="Woorden"/><TextBlock x:Name="TotalWordsText" FontSize="28" FontWeight="Bold"/></StackPanel></Border>
+                        <Border Background="#F1EEFF" CornerRadius="10" Padding="18" Margin="0,0,10,10"><StackPanel><TextBlock Text="Gemiddelde WPM"/><TextBlock x:Name="WpmText" FontSize="28" FontWeight="Bold"/></StackPanel></Border>
+                        <Border Background="#F1EEFF" CornerRadius="10" Padding="18" Margin="0,0,10,10"><StackPanel><TextBlock Text="Huidige reeks"/><TextBlock x:Name="StreakText" FontSize="28" FontWeight="Bold"/></StackPanel></Border>
+                        <Border Background="#F1EEFF" CornerRadius="10" Padding="18" Margin="0,0,10,10"><StackPanel><TextBlock Text="Langste reeks"/><TextBlock x:Name="LongestStreakText" FontSize="28" FontWeight="Bold"/></StackPanel></Border>
+                        <Border Background="#F1EEFF" CornerRadius="10" Padding="18" Margin="0,0,10,10"><StackPanel><TextBlock Text="Dictionary-fixes"/><TextBlock x:Name="FixesText" FontSize="28" FontWeight="Bold"/></StackPanel></Border>
+                        <Border Background="#F1EEFF" CornerRadius="10" Padding="18" Margin="0,0,10,10"><StackPanel><TextBlock Text="Actieve dagen"/><TextBlock x:Name="ActiveDaysText" FontSize="28" FontWeight="Bold"/></StackPanel></Border>
+                    </UniformGrid>
+                </StackPanel>
+            </TabItem>
+
+            <TabItem Header="Dictionary">
+                <Grid Margin="22">
+                    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                    <TextBlock Text="Dictionary" FontSize="22" FontWeight="SemiBold" />
+                    <WrapPanel Grid.Row="1" Margin="0,12,0,12">
+                        <TextBox x:Name="PreferredText" Width="220" ToolTip="Voorkeursspelling" />
+                        <TextBox x:Name="AliasesText" Width="320" ToolTip="Aliassen, gescheiden door komma's" />
+                        <Button Content="Toevoegen" Click="AddDictionary_Click" />
+                    </WrapPanel>
+                    <ListBox x:Name="DictionaryList" Grid.Row="2" DisplayMemberPath="PreferredSpelling" />
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="Settings">
+                <StackPanel Margin="22" MaxWidth="620" HorizontalAlignment="Left">
+                    <TextBlock Text="Instellingen" FontSize="22" FontWeight="SemiBold" />
+                    <TextBlock Text="Dictatiemodus" FontWeight="SemiBold" Margin="0,18,0,0" />
+                    <ComboBox x:Name="ModeCombo" Width="260" HorizontalAlignment="Left" SelectionChanged="Settings_Changed" />
+                    <TextBlock Text="Taal" FontWeight="SemiBold" Margin="0,12,0,0" />
+                    <ComboBox x:Name="LanguageCombo" Width="260" HorizontalAlignment="Left" SelectionChanged="Settings_Changed" />
+                    <CheckBox x:Name="FlowBarCheck" Content="Flow Bar tonen" Margin="0,14,0,0" Checked="Settings_Changed" Unchecked="Settings_Changed" />
+                    <CheckBox x:Name="SoundsCheck" Content="Start- en voltooiingsgeluid afspelen" Margin="0,10,0,0" Checked="Settings_Changed" Unchecked="Settings_Changed" />
+                    <CheckBox x:Name="FormattingCheck" Content="Slimme lokale formatting" Margin="0,10,0,0" Checked="Settings_Changed" Unchecked="Settings_Changed" />
+                    <CheckBox x:Name="StartupCheck" Content="Start Sprekr bij aanmelden" Margin="0,10,0,0" Checked="Settings_Changed" Unchecked="Settings_Changed" />
+                    <TextBlock Margin="0,22,0,0" TextWrapping="Wrap" Foreground="#686872"
+                               Text="Sprekr mag niet als administrator worden gestart en voert geen tekst in password-, disabled-, read-only- of verhoogde administratorvelden in." />
+                </StackPanel>
+            </TabItem>
+        </TabControl>
+        <TextBlock x:Name="StatusText" Grid.Row="2" Margin="4,12,0,0" Foreground="#686872" />
+    </Grid>
+</Window>
