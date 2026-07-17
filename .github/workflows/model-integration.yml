@@ -1,0 +1,38 @@
+name: Pinned model integration
+
+on:
+  schedule:
+    - cron: '17 3 * * 0'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  model:
+    name: Download, verify, load, transcribe offline
+    runs-on: macos-14
+    timeout-minutes: 45
+    env:
+      MODEL_REVISION: aed02740059203c4a87495924f685de3722ae9ce
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Restore only the pinned Sprekr model cache
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          # Legacy path is intentionally retained so existing local model data
+          # remains compatible after the Sprekr rebrand.
+          path: ~/Library/Application Support/Klim Talks/Models
+          key: sprekr-parakeet-${{ runner.os }}-${{ env.MODEL_REVISION }}
+      - name: Create synthetic Dutch fixture
+        run: say -v Xander -o "$RUNNER_TEMP/sprekr-synthetic.aiff" 'Sprekr verwerkt deze synthetische test lokaal.'
+      - name: Download from pinned URLs, verify, and transcribe
+        run: |
+          swift build --product sprekr-spike
+          "$(swift build --show-bin-path)/sprekr-spike" --expect-nonempty nl "$RUNNER_TEMP/sprekr-synthetic.aiff"
+      - name: Prove the verified cache works offline
+        run: |
+          "$(swift build --show-bin-path)/sprekr-spike" --offline --expect-nonempty nl "$RUNNER_TEMP/sprekr-synthetic.aiff"

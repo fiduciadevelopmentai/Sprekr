@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDevelopmentRegion</key>
+  <string>en</string>
+  <key>CFBundleDisplayName</key>
+  <string>Sprekr</string>
+  <key>CFBundleIconFile</key>
+  <string>SprekrIcon.icns</string>
+  <key>CFBundleExecutable</key>
+  <string>Sprekr</string>
+  <key>CFBundleIdentifier</key>
+  <string>com.klimtalks.app</string>
+  <key>CFBundleInfoDictionaryVersion</key>
+  <string>6.0</string>
+  <key>CFBundleName</key>
+  <string>Sprekr</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleShortVersionString</key>
+  <string>0.1.0</string>
+  <key>CFBundleVersion</key>
+  <string>2</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>14.0</string>
+  <key>NSHighResolutionCapable</key>
+  <true/>
+  <key>ATSApplicationFontsPath</key>
+  <string>.</string>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>Sprekr uses your microphone only while you dictate. Audio is processed locally and temporary recordings are deleted after each dictation.</string>
+  <key>NSAccessibilityUsageDescription</key>
+  <string>Sprekr needs Accessibility permission to return your local transcript to the text field you started in.</string>
+</dict>
+</plist>
