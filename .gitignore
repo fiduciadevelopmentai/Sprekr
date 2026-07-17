@@ -1,0 +1,59 @@
+.DS_Store
+.env*
+!.env.example
+!.env.*.example
+.build/
+DerivedData/
+build/
+dist/
+*.xcarchive
+*.xcresult
+*.dSYM
+*.dmg
+*.app
+*.partial
+*.part
+.swiftpm/
+.idea/
+.vscode/
+xcuserdata/
+*.xcuserstate
+Secrets/
+*.key
+*.pem
+*.p12
+*.pfx
+*.cer
+*.crt
+*.mobileprovision
+*.provisionprofile
+*.entitlements.local
+source-signing-identity.sha1
+*.signing-identity.local
+*.crash
+*.ips
+
+# Never include local application data, audio, model artifacts, or logs.
+Sprekr Data/
+/Models/
+*.mlmodel
+*.mlmodelc/
+*.mlpackage/
+*.mlarchive
+*.wav
+*.caf
+*.m4a
+*.aiff
+*.mp3
+*.flac
+*.log
+Sprekr History*.json
+history.enc
+dictionary.enc
+
+# These two reviewed AIFF files are bundled app sounds, not user recordings.
+!Resources/SprekrStart.aiff
+!Resources/SprekrCompletion.aiff
+
+# Detailed local development history; keep it out of the public repository.
+PROJECT_STATUS.md

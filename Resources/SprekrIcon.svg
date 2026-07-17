@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <radialGradient id="background" cx="50%" cy="44%" r="72%">
+      <stop offset="0" stop-color="#181b22"/>
+      <stop offset="1" stop-color="#0d0f14"/>
+    </radialGradient>
+  </defs>
+  <!-- Match the visual footprint of standard macOS app icons: artwork uses
+       roughly 81% of the 1024 px layout and keeps a transparent outer margin. -->
+  <g transform="translate(96 96) scale(0.8125)">
+    <rect x="8" y="8" width="1008" height="1008" rx="250" fill="url(#background)"/>
+    <g fill="#f7f4ed">
+      <rect x="226" y="541" width="50" height="154" rx="25"/>
+      <rect x="319" y="485" width="50" height="210" rx="25"/>
+      <rect x="412" y="430" width="50" height="265" rx="25"/>
+      <rect x="505" y="374" width="50" height="321" rx="25"/>
+      <rect x="598" y="318" width="50" height="377" rx="25"/>
+      <rect x="784" y="485" width="50" height="210" rx="25"/>
+    </g>
+    <rect x="691" y="393" width="50" height="302" rx="25" fill="#94b58f"/>
+  </g>
+</svg>
