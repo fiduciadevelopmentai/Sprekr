@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <RootNamespace>Sprekr.Windows.Tests</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Sprekr.Windows.Core\Sprekr.Windows.Core.csproj" />
+    <ProjectReference Include="..\..\src\Sprekr.Windows.Infrastructure\Sprekr.Windows.Infrastructure.csproj" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit.v3" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\fixtures\formatter-golden.json" Link="fixtures\formatter-golden.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

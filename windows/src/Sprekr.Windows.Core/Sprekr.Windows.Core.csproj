@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Sprekr.Windows.Core</RootNamespace>
+  </PropertyGroup>
+</Project>

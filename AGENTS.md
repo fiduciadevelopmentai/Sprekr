@@ -6,7 +6,7 @@ Sprekr is a free and open-source Fiducia Development project. This file is the p
 
 1. Read `README.md`, `SECURITY.md`, `PRIVACY.md`, and `ARCHITECTURE.md` before changing or installing anything.
 2. Preserve the user’s worktree and the legacy-compatible `~/Library/Application Support/Klim Talks/`. Never reset, clean, overwrite, export, or remove user data unless the user explicitly requests the exact action.
-3. Run the read-only, redacted preflight:
+3. On macOS, run the read-only, redacted preflight:
 
    ```sh
    make doctor
@@ -25,7 +25,16 @@ Sprekr is a free and open-source Fiducia Development project. This file is the p
    ./scripts/update.sh --source
    ```
 
-There is no supported artifact, DMG, Homebrew, Sparkle, or Gatekeeper-bypass installation path. `make package` is a local verification step and creates an explicitly named `development-adhoc` DMG; never advertise or install it as an official release.
+6. On Windows 11 x64, use only the PowerShell entry points on the `Windows-gebruikers` branch:
+
+   ```powershell
+   .\windows\scripts\doctor-windows.ps1
+   .\windows\scripts\install-windows.ps1
+   ```
+
+   Never run PowerShell, the installer, or Sprekr as administrator. The ordinary Windows uninstall preserves `%LOCALAPPDATA%\Sprekr`; purging it requires the user's explicit request and the exact confirmation parameter documented in README.
+
+There is no supported DMG, Homebrew, Sparkle, MSIX, production Windows installer, Gatekeeper bypass or SmartScreen bypass. `make package` creates a local `development-adhoc` DMG. Windows CI creates an explicitly unsigned `development-unsigned` ZIP. Never advertise either as an official signed release.
 
 ## Hard safety boundaries
 
@@ -40,6 +49,8 @@ Never:
 - replace the pinned model revision, hashes, dependency lock, signing requirement, privacy limits, or secure-field exclusions as a troubleshooting shortcut;
 - silently create a new encryption key when encrypted data already exists;
 - introduce telemetry, cloud transcription, remote logging, accounts, API keys, or environment-overridable model registries.
+- run Sprekr or its Windows installer elevated, bypass Windows integrity levels, or inject into an administrator process;
+- read or replace the Windows clipboard for delivery; Windows uses a one-shot Unicode write and never retries an indeterminate result;
 
 If a command would cross one of these boundaries, stop and explain the safe manual step to the user.
 
@@ -50,6 +61,7 @@ If a command would cross one of these boundaries, stop and explain the safe manu
 - **Escape:** cancel recording, keep it for a six-second Undo window, then remove it.
 - **Flow Bar:** remain non-activating, show listening/processing/recovery state, and never steal text focus.
 - **Language:** Automatic preserves detected language; Nederlands or English may translate locally through Apple’s Translation framework.
+- **Windows language:** Automatic preserves detected language; explicit Dutch/English retains the source text and reports that local translation is unavailable.
 - **History:** store transcripts locally with AES-GCM and a Keychain-held key; copying/exporting is always user initiated.
 - **Insights:** derive local metrics without analyzing other apps.
 - **Dictionary and correction learning:** keep explicit spellings and bounded aliases encrypted; immediate learning inspects only the just-inserted range with a tiny in-memory boundary.
@@ -66,6 +78,9 @@ If a command would cross one of these boundaries, stop and explain the safe manu
 - `EncryptedJSONStore`, `TranscriptRepository`, and `DictionaryRepository` own local persistence. Application Support directories are `0700`; encrypted stores and exports are `0600`.
 - `HotkeyManager`, `FlowBarController`, and `AppLifecycleController` own global controls and native macOS lifecycle behavior.
 - Swift dependencies stay exact in `Package.swift` and `Package.resolved`. Third-party changes require notice and license review.
+- `windows/Sprekr.sln` is isolated from the Swift build. Core defines platform contracts; Infrastructure owns sherpa-onnx, WASAPI, DPAPI, UI Automation and low-level hooks; App owns WPF and tray lifecycle.
+- Windows dependencies stay centrally pinned in `windows/Directory.Packages.props` and every project lockfile remains committed. Do not restore without `--locked-mode` in CI or release flows.
+- Windows data stays under `%LOCALAPPDATA%\Sprekr`; installed binaries stay under `%LOCALAPPDATA%\Programs\Sprekr`. Never reuse or migrate the macOS legacy data root.
 
 ## Verification commands
 
@@ -79,6 +94,18 @@ make audit
 ```
 
 The development CLI reports only status, timing, and transcript character count. `--print-transcript` is allowed only with synthetic test audio. Do not use it with a user recording.
+
+Windows verification uses:
+
+```powershell
+Set-Location windows
+dotnet restore .\Sprekr.sln --locked-mode --configfile .\NuGet.Config
+dotnet build .\Sprekr.sln --configuration Release --no-restore
+dotnet test .\tests\Sprekr.Windows.Tests\Sprekr.Windows.Tests.csproj --configuration Release --no-build
+.\scripts\build-development-unsigned.ps1
+```
+
+The scheduled model test may use only the synthetic WAV bundled in the pinned sherpa model archive. Never point it at a user recording or print transcript text.
 
 ## Troubleshooting decision tree
 
