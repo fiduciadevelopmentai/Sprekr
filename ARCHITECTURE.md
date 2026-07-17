@@ -1,5 +1,45 @@
 # Architecture
 
+## Platform boundary
+
+Sprekr has two native applications with equivalent behavioral contracts:
+
+- macOS remains the established Swift 6, SwiftUI/AppKit, AVFoundation, Accessibility, Keychain, FluidAudio and Core ML implementation. Its bundle identifiers, local signing continuity and legacy `~/Library/Application Support/Klim Talks/` data root are frozen.
+- Windows 11 x64 is a separate .NET 10 WPF solution under `windows/Sprekr.sln`. It uses NAudio/WASAPI, sherpa-onnx/ONNX, Windows UI Automation, low-level input hooks, DPAPI and `%LOCALAPPDATA%\Sprekr`.
+
+`Package.swift` never participates in the Windows build, and the Windows solution never compiles Swift or AppKit. Shared behavior is validated through semantic interfaces and `windows/tests/fixtures/formatter-golden.json`, not through a common native binary.
+
+## Windows solution
+
+| Project | Responsibility |
+| --- | --- |
+| `Sprekr.Windows.Core` | Platform-neutral contracts, dictation state machine, formatting, Dictionary corrections, Insights and translation fallback. |
+| `Sprekr.Windows.Infrastructure` | Pinned model installer, sherpa-onnx boundary, WASAPI capture/playback, DPAPI/AES-GCM persistence, UI Automation delivery, global hooks and startup registration. |
+| `Sprekr.Windows.App` | WPF shell, non-activating Flow Bar, tray lifecycle, device/settings UI, History, Insights and Dictionary. |
+| `Sprekr.Windows.Tests` | State, formatting parity, integrity, path traversal, encryption/key-loss and safe-delivery regression tests. |
+
+The Windows data flow is:
+
+```text
+global Hold/Toggle input
+  -> temporary WASAPI recording
+  -> sherpa-onnx Parakeet transcription
+  -> deterministic formatting
+  -> source-text translation decision
+  -> encrypted Dictionary correction
+  -> encrypted History append
+  -> classified one-shot Unicode delivery
+  -> guaranteed temporary-audio removal
+```
+
+The platform contracts are `ITranscriptionEngine`, `IModelInstaller`, `IAudioCaptureService`, `IAudioCuePlayer`, `IHotkeyService`, `ITextDeliveryService`, `IEncryptedStore<T>`, `ITranscriptRepository`, `IDictionaryRepository`, `ILocalTranslationService`, `IStartupService` and `IFlowBarController`.
+
+The official sherpa-onnx Parakeet TDT 0.6B v3 INT8 archive is fixed at 487,170,055 bytes and SHA-256 `5793d0fd397c5778d2cf2126994d58e9d56b1be7c04d13c7a15bb1b4eafb16bf`. Resumable download, fixed-time digest comparison, archive traversal rejection, one retry and same-volume directory activation are mandatory. FFmpeg is not part of either Windows development or production flow.
+
+Windows text delivery does not inspect or replace the clipboard. UI Automation classifies the focused target; password, disabled, read-only, non-editable, self and elevated targets are refused. `SendInput` emits Unicode once. Where a selection range is available, verification reads at most the preceding 64 expected characters. A partial or mismatching write is indeterminate and is never retried.
+
+Windows History and Dictionary ciphertext use AES-GCM. Their random 256-bit keys are separately protected by DPAPI `CurrentUser`; existing ciphertext without its key is preserved and blocks replacement-key creation. Settings are non-sensitive JSON. Models and temporary audio also live under `%LOCALAPPDATA%\Sprekr`; installed binaries live under `%LOCALAPPDATA%\Programs\Sprekr`.
+
 ## Principles
 
 - Local-first: no API keys, accounts, telemetry, cloud sync, or remote transcription.
