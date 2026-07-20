@@ -174,7 +174,7 @@ struct OnboardingView: View {
                                 .padding(.horizontal, 70)
                                 .padding(.vertical, contentVerticalPadding)
                         }
-                        .scrollIndicators(.automatic)
+                        .scrollIndicators(.never)
                     }
 
                     Divider().overlay(SprekrPalette.line)
@@ -662,6 +662,7 @@ struct OnboardingView: View {
                 .frame(height: 120)
                 .padding(10)
                 .sprekrSurface()
+                .scrollIndicators(.never)
             Button(buttonState.title) {
                 controller.toggleOnboardingTestDictation()
             }

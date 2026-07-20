@@ -228,7 +228,7 @@ struct SettingsView: View {
             .frame(maxWidth: 920, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .scrollIndicators(.hidden)
+        .scrollIndicators(.never)
     }
 
     private var generalContent: some View {
@@ -851,7 +851,7 @@ private struct AcknowledgementsSheet: View {
                         .padding(.vertical, 12)
                     }
                 }
-                .scrollIndicators(.hidden)
+                .scrollIndicators(.never)
             }
         }
         .frame(minWidth: 720, idealWidth: 780, minHeight: 560, idealHeight: 640)
