@@ -6,7 +6,7 @@ Sprekr is a private, fast dictation app for Apple-silicon Macs and Windows 11 x6
 
 > **Source/development beta:** macOS remains source-only; there is no official DMG, Homebrew package, Sparkle feed, or notarized binary. Windows supports a source install and a clearly named, unsigned `development-unsigned` ZIP produced by CI. It is not a production installer. Build only from a trusted checkout.
 
-The production macOS implementation remains isolated in Swift/SwiftUI. Windows development lives on the `Windows-gebruikers` branch as a native WPF app; nothing is merged into `master` until both platform gates pass.
+The established macOS implementation remains isolated in Swift/SwiftUI, while the Windows implementation is a native .NET/WPF app under `windows/`. Both platforms are maintained together on the default `master` branch. Windows is currently a source/development beta pending real Windows 11 x64 hardware acceptance.
 
 ## Install with a coding agent
 
@@ -77,10 +77,10 @@ The source build requires recent Apple Command Line Tools with Swift 6. If they 
 
 ### Windows 11 x64: source install
 
-Clone the Windows branch from PowerShell, run the read-only doctor, and install without administrator rights:
+Clone the default branch from PowerShell, run the read-only doctor, and install without administrator rights:
 
 ```powershell
-git clone --branch Windows-gebruikers https://github.com/fiduciadevelopmentai/Sprekr.git
+git clone https://github.com/fiduciadevelopmentai/Sprekr.git
 Set-Location Sprekr
 .\windows\scripts\doctor-windows.ps1
 .\windows\scripts\install-windows.ps1
@@ -185,7 +185,7 @@ Settings uses four focused pages: General for independent Hold and Toggle keys, 
 
 ## Updates and uninstall
 
-On Windows, pull a clean `Windows-gebruikers` checkout and rerun `.\windows\scripts\install-windows.ps1`; installed binaries are replaced transactionally while `%LOCALAPPDATA%\Sprekr` is preserved. The normal uninstall also preserves local data:
+On Windows, fast-forward a clean `master` checkout and rerun `.\windows\scripts\install-windows.ps1`; installed binaries are replaced transactionally while `%LOCALAPPDATA%\Sprekr` is preserved. The normal uninstall also preserves local data:
 
 ```powershell
 .\windows\scripts\uninstall-windows.ps1

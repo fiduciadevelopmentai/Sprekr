@@ -37,7 +37,7 @@ $microphoneAllowed = $microphoneValue -ne 'Deny'
 Test-Requirement 'Microfoontoegang' $microphoneAllowed $(if ($microphoneValue) { $microphoneValue } else { 'nog niet gekozen' }) 'Open Instellingen > Privacy en beveiliging > Microfoon en sta desktop-apps toe.'
 
 $lockFiles = Get-ChildItem -Path (Join-Path $PSScriptRoot '..') -Filter packages.lock.json -Recurse -ErrorAction SilentlyContinue
-Test-Requirement 'NuGet-lockbestanden' ($lockFiles.Count -ge 2) ("{0} gevonden" -f $lockFiles.Count) 'Clone de volledige Windows-gebruikers branch opnieuw; lockbestanden ontbreken.'
+Test-Requirement 'NuGet-lockbestanden' ($lockFiles.Count -ge 2) ("{0} gevonden" -f $lockFiles.Count) 'Clone de volledige standaardbranch opnieuw; lockbestanden ontbreken.'
 
 if ($failures -gt 0) {
     Write-Host "$failures vereiste(n) niet gereed." -ForegroundColor Red

@@ -1,6 +1,6 @@
 # Contributing
 
-Sprekr welcomes contributions. Windows development remains isolated on `Windows-gebruikers` until the cross-platform acceptance gates pass.
+Sprekr welcomes contributions. macOS and Windows source are maintained together on `master`, with native platform boundaries and cross-platform acceptance gates.
 
 ## Ground rules
 

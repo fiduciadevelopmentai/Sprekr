@@ -21,7 +21,7 @@ It reports only Windows build/architecture, exact .NET SDK availability, free sp
 - **Windows 10 or ARM64:** unsupported in v1. Use an up-to-date Windows 11 x64 environment.
 - **.NET SDK missing/wrong:** install .NET SDK 10.0.302 x64 from Microsoft. Do not substitute an unreviewed SDK or weaken `global.json`.
 - **Less than 1.5 GB free:** free space on the `%LOCALAPPDATA%` drive and rerun the doctor.
-- **Locked restore fails:** do not delete or regenerate lockfiles as a shortcut. Confirm the `Windows-gebruikers` checkout is complete and report the sanitized package error.
+- **Locked restore fails:** do not delete or regenerate lockfiles as a shortcut. Confirm the default `master` checkout is complete and report the sanitized package error.
 - **Native sherpa runtime missing or wrong architecture:** rerun `install-windows.ps1` from the trusted source checkout. The source must restore `org.k2fsa.sherpa.onnx.runtime.win-x64` 1.13.4.
 - **Unsigned development warning:** expected for the `development-unsigned` ZIP. Prefer a source build. Do not disable SmartScreen, lower trust settings or run as administrator.
 

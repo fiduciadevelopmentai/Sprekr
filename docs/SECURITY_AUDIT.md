@@ -51,7 +51,7 @@ Do not include real dictation content in test evidence. Use synthetic phrases.
 
 - Repository begins private and receives only sanitized history.
 - Secret scanning, push protection, and Private Vulnerability Reporting are enabled.
-- `main` requires pull requests, required green checks, linear history, and blocks force-push/deletion. Zero approvals is acceptable for the solo-owner workflow.
+- `master` requires pull requests, required green checks, resolved conversations, linear history, and blocks force-push/deletion. Zero approvals is acceptable for the solo-owner workflow.
 - Default workflow permissions are read-only.
 - No workflow uses `pull_request_target`; all action references are immutable commit SHAs.
 

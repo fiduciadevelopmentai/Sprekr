@@ -49,11 +49,11 @@ This source-only beta has no official DMG, Homebrew cask, public update feed, or
 
 Use this exact prompt:
 
-> Install Sprekr on Windows 11 x64 from the `Windows-gebruikers` source branch. Read AGENTS.md, README.md, SECURITY.md, PRIVACY.md and docs/AGENT_INSTALL.md first. Run `.\windows\scripts\doctor-windows.ps1`, explain any failing requirement without showing private content, then run `.\windows\scripts\install-windows.ps1`. Never run as administrator, bypass SmartScreen or Windows integrity controls, change Microphone privacy settings for me, remove `%LOCALAPPDATA%\Sprekr`, or print transcript, audio, clipboard or target-field contents. After launch, guide me through the verified model download, Microphone access, the Hold and Toggle controls, Escape, the six-second Undo window, and a first dictation into a normal non-elevated editable field.
+> Install Sprekr on Windows 11 x64 from this repository's default branch. Read AGENTS.md, README.md, SECURITY.md, PRIVACY.md and docs/AGENT_INSTALL.md first. Run `.\windows\scripts\doctor-windows.ps1`, explain any failing requirement without showing private content, then run `.\windows\scripts\install-windows.ps1`. Never run as administrator, bypass SmartScreen or Windows integrity controls, change Microphone privacy settings for me, remove `%LOCALAPPDATA%\Sprekr`, or print transcript, audio, clipboard or target-field contents. After launch, guide me through the verified model download, Microphone access, the Hold and Toggle controls, Escape, the six-second Undo window, and a first dictation into a normal non-elevated editable field.
 
 A Windows agent must:
 
-1. Confirm the checkout remote and exact `Windows-gebruikers` branch, then preserve all local changes.
+1. Confirm the checkout comes from `https://github.com/fiduciadevelopmentai/Sprekr`, uses the default `master` branch, and preserve all local changes.
 2. Run the redacted doctor. Require current Windows 11 x64, .NET SDK 10.0.302 x64 and approximately 1.5 GB free.
 3. Run PowerShell as the normal user. Never elevate the shell, installer or Sprekr.
 4. Install only with `install-windows.ps1`. It performs a locked restore and self-contained `win-x64` publish under `%LOCALAPPDATA%\Programs\Sprekr`.
