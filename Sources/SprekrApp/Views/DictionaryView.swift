@@ -78,7 +78,7 @@ struct DictionaryView: View {
             .padding(.top, 34)
             .padding(.bottom, 52)
         }
-        .scrollIndicators(.hidden)
+        .scrollIndicators(.never)
         .sheet(item: $editorTarget) { target in
             switch target {
             case .new:
@@ -446,6 +446,7 @@ private struct DictionaryEditor: View {
                     ForEach(DictionaryLanguage.allCases) { Text($0.rawValue).tag($0) }
                 }
             }
+            .scrollIndicators(.never)
 
             HStack {
                 Button("Cancel") { dismiss() }

@@ -13,6 +13,7 @@ struct SprekrApp: App {
             SettingsView(controller: delegate.controller)
                 .frame(minWidth: 620, minHeight: 650)
                 .font(SprekrTypography.body())
+                .scrollIndicators(.never)
         }
         .commands {
             CommandGroup(after: .appInfo) {
@@ -36,6 +37,7 @@ struct RootView: View {
         }
         .font(SprekrTypography.body())
         .tint(SprekrPalette.accent)
+        .scrollIndicators(.never)
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             controller.applicationDidBecomeActive()
         }
