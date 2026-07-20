@@ -76,17 +76,66 @@ final class SettingsStore: ObservableObject {
     }
 }
 
+enum DictationDeliveryDestination: Equatable {
+    case focusedTarget
+    case onboarding
+}
+
+struct DictationDestinationState {
+    private struct PendingStart {
+        let id: UUID
+        let destination: DictationDeliveryDestination
+    }
+
+    private var pendingStart: PendingStart?
+    private var recordingDestination: DictationDeliveryDestination?
+
+    mutating func begin(
+        id: UUID,
+        destination: DictationDeliveryDestination
+    ) -> Bool {
+        guard pendingStart == nil, recordingDestination == nil else { return false }
+        pendingStart = PendingStart(id: id, destination: destination)
+        return true
+    }
+
+    func isPending(id: UUID) -> Bool {
+        pendingStart?.id == id
+    }
+
+    mutating func promoteToRecording(id: UUID) -> Bool {
+        guard let pendingStart, pendingStart.id == id else { return false }
+        recordingDestination = pendingStart.destination
+        self.pendingStart = nil
+        return true
+    }
+
+    mutating func cancelPendingStart() {
+        pendingStart = nil
+    }
+
+    mutating func finishRecording() -> DictationDeliveryDestination {
+        defer { recordingDestination = nil }
+        return recordingDestination ?? .focusedTarget
+    }
+
+    mutating func clear() {
+        pendingStart = nil
+        recordingDestination = nil
+    }
+}
+
 @MainActor
 final class SprekrAppController: ObservableObject {
     private struct DictationDeliveryContext {
-        let deliverInApp: Bool
+        let destination: DictationDeliveryDestination
         let outputLanguage: RecognitionLanguage
         let smartFormatting: Bool
         let restoredAfterCancellation: Bool
 
         func restoringCancelledRecording() -> Self {
             Self(
-                deliverInApp: deliverInApp,
+                destination: destination,
                 outputLanguage: outputLanguage,
                 smartFormatting: smartFormatting,
                 restoredAfterCancellation: true
@@ -115,6 +164,7 @@ final class SprekrAppController: ObservableObject {
     @Published private(set) var historyLoadError: String?
     @Published private(set) var historyNeedsKeychainUnlock = false
     @Published private(set) var toast: String?
+    @Published private(set) var isStartingDictation = false
     @Published private(set) var isTranscribing = false
     @Published private(set) var lastError: String?
     @Published private(set) var onboardingTestTranscript: String?
@@ -131,9 +181,7 @@ final class SprekrAppController: ObservableObject {
     private var currentTemporaryAudioURL: URL?
     private var pendingCancelledDictation: PendingCancelledDictation?
     private var undoExpiryTask: Task<Void, Never>?
-    private var activeStartID: UUID?
-    private var isStartingDictation = false
-    private var deliverTranscriptToOnboarding = false
+    private var dictationDestinationState = DictationDestinationState()
     private var onboardingTalkKeyPreviewEnabled = false
     private var didBoot = false
     private var startSound: NSSound?
@@ -234,46 +282,64 @@ final class SprekrAppController: ObservableObject {
     }
 
     func toggleOnboardingTestDictation() {
-        if audioCapture.isRecording || isStartingDictation {
+        if audioCapture.isRecording {
             stopDictation()
-        } else {
-            deliverTranscriptToOnboarding = true
-            startDictation()
+        } else if !isStartingDictation, !isTranscribing {
+            _ = startDictation(destination: .onboarding)
         }
     }
 
     func startDictation() {
+        _ = startDictation(destination: .focusedTarget)
+    }
+
+    @discardableResult
+    private func startDictation(
+        destination: DictationDeliveryDestination
+    ) -> Bool {
         guard !isStartingDictation,
               !isTranscribing,
               !audioCapture.isRecording,
               flowBar.acceptsNewDictation
-        else { return }
+        else { return false }
         discardPendingCancelledDictation(resetFlowBar: false)
         flowBar.captureActiveScreen()
         textInjection.prepareForDictation()
         hotkey.setDictationActive(true)
         isStartingDictation = true
         let startID = UUID()
-        activeStartID = startID
+        guard dictationDestinationState.begin(id: startID, destination: destination) else {
+            isStartingDictation = false
+            hotkey.setDictationActive(false)
+            return false
+        }
         startTask = Task { [weak self] in
             guard let self else { return }
             defer {
-                if self.activeStartID == startID {
-                    self.activeStartID = nil
+                if self.dictationDestinationState.isPending(id: startID) {
+                    self.dictationDestinationState.cancelPendingStart()
                     self.startTask = nil
                     self.isStartingDictation = false
                 }
             }
             guard await self.permissions.requestMicrophone() else {
-                self.deliverTranscriptToOnboarding = false
                 self.hotkey.setDictationActive(false)
                 self.lastError = SprekrError.noMicrophonePermission.localizedDescription
                 self.flowBar.setError("Microphone access is needed")
                 return
             }
-            guard !Task.isCancelled, self.activeStartID == startID else { return }
+            guard !Task.isCancelled,
+                  self.dictationDestinationState.isPending(id: startID)
+            else { return }
             do {
                 try self.audioCapture.start(deviceUID: self.settings.values.microphoneUID)
+                guard self.dictationDestinationState.promoteToRecording(id: startID) else {
+                    self.audioCapture.cancel()
+                    self.hotkey.setDictationActive(false)
+                    return
+                }
+                self.startTask = nil
+                self.isStartingDictation = false
                 if self.onboardingTalkKeyPreviewEnabled {
                     self.isTalkKeyPreviewActive = true
                 }
@@ -281,12 +347,12 @@ final class SprekrAppController: ObservableObject {
                 self.flowBar.setListening(level: self.audioCapture.level)
                 self.beginLevelUpdates()
             } catch {
-                self.deliverTranscriptToOnboarding = false
                 self.hotkey.setDictationActive(false)
                 self.lastError = error.localizedDescription
                 self.flowBar.setError("Microphone unavailable")
             }
         }
+        return true
     }
 
     func stopDictation() {
@@ -598,12 +664,11 @@ final class SprekrAppController: ObservableObject {
 
     private func finishCaptureContext() -> DictationDeliveryContext {
         let context = DictationDeliveryContext(
-            deliverInApp: deliverTranscriptToOnboarding,
+            destination: dictationDestinationState.finishRecording(),
             outputLanguage: settings.values.recognitionLanguage,
             smartFormatting: settings.values.smartFormatting,
             restoredAfterCancellation: false
         )
-        deliverTranscriptToOnboarding = false
         hotkey.setDictationActive(false)
         levelTask?.cancel()
         levelTask = nil
@@ -724,7 +789,7 @@ final class SprekrAppController: ObservableObject {
                 )
 
                 let recoveryReason: TextInjectionRecoveryReason?
-                if context.deliverInApp {
+                if context.destination == .onboarding {
                     self.onboardingTestTranscript = corrected.text
                     record.wasInserted = true
                     recoveryReason = nil
@@ -826,6 +891,7 @@ final class SprekrAppController: ObservableObject {
             self.currentTemporaryAudioURL = nil
         }
         audioCapture.cancel()
+        dictationDestinationState.clear()
         isTalkKeyPreviewActive = false
         isMicrophoneTestActive = false
         onboardingTalkKeyPreviewEnabled = false
@@ -833,11 +899,10 @@ final class SprekrAppController: ObservableObject {
     }
 
     private func cancelPendingStart() {
-        activeStartID = nil
+        dictationDestinationState.cancelPendingStart()
         startTask?.cancel()
         startTask = nil
         isStartingDictation = false
-        deliverTranscriptToOnboarding = false
         hotkey.setDictationActive(false)
     }
 
@@ -845,6 +910,7 @@ final class SprekrAppController: ObservableObject {
         levelTask?.cancel()
         levelTask = nil
         audioCapture.cancel()
+        dictationDestinationState.clear()
         isTalkKeyPreviewActive = false
         hotkey.setDictationActive(false)
         if showSuccess {
@@ -860,7 +926,7 @@ final class SprekrAppController: ObservableObject {
         levelTask = nil
         isTalkKeyPreviewActive = false
         isMicrophoneTestActive = false
-        deliverTranscriptToOnboarding = false
+        dictationDestinationState.clear()
         hotkey.setDictationActive(false)
         lastError = message
         flowBar.setError("Microphone disconnected")

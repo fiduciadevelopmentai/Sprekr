@@ -11,6 +11,7 @@ LEGACY_APP="$DESTINATION/$LEGACY_APP_NAME.app"
 DATA="$HOME/Library/Application Support/$SPREKR_LEGACY_APPLICATION_SUPPORT_NAME"
 MODEL_ROOT="$DATA/Models"
 MANIFEST="$ROOT/Sources/SprekrCore/Resources/ParakeetV3ModelManifest.json"
+AUDIO_INPUT_REQUIREMENT='=entitlement["com.apple.security.device.audio-input"]'
 FAILURES=0
 
 ok() { print "[ok] $*"; }
@@ -55,7 +56,11 @@ if [[ -d "$APP" ]]; then
     signature="$(codesign -d --verbose=4 "$APP" 2>&1 || true)"
     requirement="$(codesign -d -r- "$APP" 2>&1 || true)"
     if [[ "$signature" == *runtime* && "$requirement" == *'certificate leaf = H'* ]]; then
-      ok "Installed app: v${version:-unknown}, certificate-bound hardened-runtime source build"
+      if codesign --verify -R "$AUDIO_INPUT_REQUIREMENT" "$APP" >/dev/null 2>&1; then
+        ok "Installed app: v${version:-unknown}, certificate-bound hardened-runtime source build with audio input"
+      else
+        fail "Installed app: hardened runtime is missing the required audio-input entitlement"
+      fi
     else
       fail "Installed app: signature is not certificate-bound with hardened runtime"
     fi

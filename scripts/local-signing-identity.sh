@@ -29,7 +29,8 @@ trap cleanup EXIT
 
 login_keychain() {
   local keychain
-  keychain="$(security default-keychain -d user | tr -d '"')"
+  keychain="$(security default-keychain -d user \
+    | sed -E 's/^[[:space:]]*//; s/[[:space:]]*$//; s/^"//; s/"$//')"
   [[ -n "$keychain" && -f "$keychain" ]] || fail "The login Keychain could not be located."
   print -r -- "$keychain"
 }
@@ -117,7 +118,7 @@ ensure_identity() {
   # Trust is constrained to the code-signing policy in the user domain. The
   # certificate is not installed as a generally trusted root and no admin or
   # system trust settings are changed.
-  if ! security add-trusted-cert -r trustAsRoot -p codeSign -k "$keychain" "$certificate" >/dev/null; then
+  if ! security add-trusted-cert -r trustRoot -p codeSign -k "$keychain" "$certificate" >/dev/null; then
     security delete-identity -Z "$fingerprint" "$keychain" >/dev/null 2>&1 || true
     fail "The certificate could not be trusted specifically for local code signing."
   fi
