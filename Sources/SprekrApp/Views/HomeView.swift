@@ -94,7 +94,7 @@ struct HomeView: View {
             .padding(.horizontal, 36)
             .padding(.bottom, 38)
         }
-        .scrollIndicators(.hidden)
+        .scrollIndicators(.never)
     }
 
     private func historyHeader(_ title: String) -> some View {

@@ -44,7 +44,7 @@ struct InsightsView: View {
             }
             .padding(36)
         }
-        .scrollIndicators(.hidden)
+        .scrollIndicators(.never)
     }
 }
 
