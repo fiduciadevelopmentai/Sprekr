@@ -36,6 +36,11 @@ struct ProductLogicTests {
         #expect(OnboardingReadinessPolicy.modelAction(for: .checking) == .none)
         #expect(
             OnboardingReadinessPolicy.modelAction(
+                for: .preparing(detail: "Loading the verified model…")
+            ) == .none
+        )
+        #expect(
+            OnboardingReadinessPolicy.modelAction(
                 for: .downloading(progress: 0.4, detail: "Downloading")
             ) == .none
         )
@@ -45,12 +50,42 @@ struct ProductLogicTests {
         #expect(OnboardingReadinessPolicy.canContinueFromModel(.installed(bytes: 483_000_000)))
     }
 
+    @Test func modelDownloadPercentageIsClampedAndRoundedForDisplay() {
+        #expect(ModelProgressPresentation.checkingTitle == "Checking for a model on this Mac…")
+        #expect(ModelProgressPresentation.percentage(for: -0.2) == 0)
+        #expect(ModelProgressPresentation.percentage(for: 0.424) == 42)
+        #expect(ModelProgressPresentation.percentage(for: 0.999) == 100)
+        #expect(ModelProgressPresentation.percentage(for: 1.4) == 100)
+        #expect(
+            ModelProgressPresentation.downloadTitle(percentage: 42)
+                == "Downloading speech model — 42%"
+        )
+    }
+
     @Test func modelDownloadBlocksOnlyAKnownStorageShortage() {
         #expect(ModelDownloadPolicy.storageFailureMessage(availableBytes: nil) == nil)
         #expect(ModelDownloadPolicy.storageFailureMessage(availableBytes: 2_000_000_000) == nil)
         #expect(
             ModelDownloadPolicy.storageFailureMessage(availableBytes: 100_000_000)
                 == "Download failed. Your Mac doesn’t have enough free storage. Free at least 1 GB and try again."
+        )
+    }
+
+    @Test @MainActor
+    func modelDownloadStopsBeforePreparingWhenStorageIsKnownToBeShort() async {
+        let engine = RecordingModelEngine()
+        let manager = ModelManager(
+            engine: engine,
+            availableDiskSpaceProvider: { 100_000_000 }
+        )
+
+        await manager.installOrLoad()
+
+        #expect(await engine.prepareCallCount() == 0)
+        #expect(
+            manager.state == .failed(
+                message: "Download failed. Your Mac doesn’t have enough free storage. Free at least 1 GB and try again."
+            )
         )
     }
 
@@ -75,6 +110,64 @@ struct ProductLogicTests {
             conflictMessage: nil,
             isRecordingShortcut: false
         ))
+    }
+
+    @Test func onboardingDictationButtonShowsEveryStartAndProcessingState() {
+        let idle = OnboardingDictationButtonState.resolve(
+            isStarting: false,
+            isRecording: false,
+            isTranscribing: false
+        )
+        let starting = OnboardingDictationButtonState.resolve(
+            isStarting: true,
+            isRecording: false,
+            isTranscribing: false
+        )
+        let recording = OnboardingDictationButtonState.resolve(
+            isStarting: false,
+            isRecording: true,
+            isTranscribing: false
+        )
+        let transcribing = OnboardingDictationButtonState.resolve(
+            isStarting: false,
+            isRecording: false,
+            isTranscribing: true
+        )
+
+        #expect(idle.title == "Start dictation")
+        #expect(!idle.isDisabled)
+        #expect(starting.title == "Starting…")
+        #expect(starting.isDisabled)
+        #expect(recording.title == "Stop dictation")
+        #expect(!recording.isDisabled)
+        #expect(transcribing.title == "Transcribing…")
+        #expect(transcribing.isDisabled)
+    }
+
+    @Test func onboardingDestinationCannotLeakAcrossRejectedOrCancelledStarts() {
+        var state = DictationDestinationState()
+        let firstID = UUID()
+        let rejectedID = UUID()
+
+        let firstAccepted = state.begin(id: firstID, destination: .onboarding)
+        let secondAccepted = state.begin(id: rejectedID, destination: .focusedTarget)
+        let wrongStartPromoted = state.promoteToRecording(id: rejectedID)
+        #expect(firstAccepted)
+        #expect(!secondAccepted)
+        #expect(!wrongStartPromoted)
+        state.cancelPendingStart()
+        let destinationAfterCancellation = state.finishRecording()
+        #expect(destinationAfterCancellation == .focusedTarget)
+
+        let acceptedID = UUID()
+        let accepted = state.begin(id: acceptedID, destination: .onboarding)
+        let promoted = state.promoteToRecording(id: acceptedID)
+        let deliveredDestination = state.finishRecording()
+        let clearedDestination = state.finishRecording()
+        #expect(accepted)
+        #expect(promoted)
+        #expect(deliveredDestination == .onboarding)
+        #expect(clearedDestination == .focusedTarget)
     }
 
     @Test func bundledAcknowledgementsTableParsesIntoVisibleRows() {
@@ -1884,21 +1977,95 @@ struct ProductLogicTests {
     }
 
     @Test
-    func manualAccessibilityActivationUsesUniversalAttributeAndBoundedRetries() {
-        #expect(ManualAccessibilityPolicy.attribute == "AXManualAccessibility")
-        #expect(ManualAccessibilityPolicy.retryDelaysMilliseconds == [40, 80, 160])
+    func accessibilityActivationUsesBothUniversalAttributesExactlyOncePerProcess() {
+        var coordinator = AccessibilityActivationCoordinator<String>()
+        var requests: [AccessibilityActivationAttribute] = []
+        let startedAt = Date(timeIntervalSince1970: 1_000)
+
+        let first = coordinator.requestIfNeeded(for: "process-a", at: startedAt) { attribute in
+            requests.append(attribute)
+            return .success
+        }
+        let repeated = coordinator.requestIfNeeded(
+            for: "process-a",
+            at: startedAt.addingTimeInterval(1)
+        ) { attribute in
+            requests.append(attribute)
+            return .success
+        }
+
+        #expect(AccessibilityActivationAttribute.allCases == [.manual, .enhancedUserInterface])
+        #expect(requests == [.manual, .enhancedUserInterface])
+        #expect(first == repeated)
+        #expect(first.acceptedAnyRequest)
+
+        _ = coordinator.requestIfNeeded(for: "process-b", at: startedAt) { attribute in
+            requests.append(attribute)
+            return .success
+        }
+        #expect(requests == [
+            .manual,
+            .enhancedUserInterface,
+            .manual,
+            .enhancedUserInterface,
+        ])
+    }
+
+    @Test
+    func accessibilityActivationWaitsThroughChromiumDebounceUsingAbsoluteCheckpoints() {
+        let startedAt = Date(timeIntervalSince1970: 2_000)
         #expect(
-            ManualAccessibilityPolicy.shouldRetryTargetResolution(after: .enabled)
+            AccessibilityActivationPolicy.retryCheckpointsMilliseconds
+                == [40, 120, 280, 600, 1_200, 2_250]
         )
         #expect(
-            ManualAccessibilityPolicy.shouldRetryTargetResolution(after: .alreadyEnabled)
+            AccessibilityActivationPolicy.remainingRetryDelaysMilliseconds(
+                requestedAt: startedAt,
+                now: startedAt
+            ) == [40, 80, 160, 320, 600, 1_050]
         )
         #expect(
-            !ManualAccessibilityPolicy.shouldRetryTargetResolution(after: .unsupported)
+            AccessibilityActivationPolicy.remainingRetryDelaysMilliseconds(
+                requestedAt: startedAt,
+                now: startedAt.addingTimeInterval(0.5)
+            ) == [100, 600, 1_050]
         )
         #expect(
-            !ManualAccessibilityPolicy.shouldRetryTargetResolution(after: .failed)
+            AccessibilityActivationPolicy.remainingRetryDelaysMilliseconds(
+                requestedAt: startedAt,
+                now: startedAt.addingTimeInterval(2.3)
+            ).isEmpty
         )
+
+        var elapsed = 0
+        var targetResolved = false
+        for delay in AccessibilityActivationPolicy.remainingRetryDelaysMilliseconds(
+            requestedAt: startedAt,
+            now: startedAt
+        ) {
+            elapsed += delay
+            if elapsed >= 2_000 {
+                targetResolved = true
+                break
+            }
+        }
+        #expect(targetResolved)
+        #expect(elapsed == 2_250)
+    }
+
+    @Test
+    func unsupportedOrFailedAccessibilityActivationDoesNotEnterTheLongRetryPath() {
+        var coordinator = AccessibilityActivationCoordinator<String>()
+        let record = coordinator.requestIfNeeded(
+            for: "unsupported-process",
+            at: Date(timeIntervalSince1970: 3_000)
+        ) { attribute in
+            attribute == .manual ? .attributeUnsupported : .cannotComplete
+        }
+
+        #expect(record.outcomes[.manual] == .unsupported)
+        #expect(record.outcomes[.enhancedUserInterface] == .failed)
+        #expect(!record.acceptedAnyRequest)
     }
 
     @Test
@@ -2284,4 +2451,37 @@ struct ProductLogicTests {
             hour: 12
         ))!
     }
+}
+
+private actor RecordingModelEngine: ModelEngine {
+    private var preparations = 0
+
+    func installedModelExists() -> Bool { false }
+    func isPrepared() -> Bool { false }
+
+    func prepare(
+        progress: (@Sendable (ModelPreparationProgress) -> Void)?
+    ) async throws -> ModelPreparation {
+        preparations += 1
+        return ModelPreparation(modelBytes: 0, preparationDuration: 0, usedExistingModel: false)
+    }
+
+    func prepare(
+        allowNetwork: Bool,
+        progress: (@Sendable (ModelPreparationProgress) -> Void)?
+    ) async throws -> ModelPreparation {
+        preparations += 1
+        return ModelPreparation(modelBytes: 0, preparationDuration: 0, usedExistingModel: false)
+    }
+
+    func transcribe(
+        audioURL: URL,
+        language: TranscriptionLanguage
+    ) async throws -> TranscriptionResult {
+        TranscriptionResult(text: "", audioDuration: 0, transcriptionDuration: 0)
+    }
+
+    func unload() {}
+
+    func prepareCallCount() -> Int { preparations }
 }

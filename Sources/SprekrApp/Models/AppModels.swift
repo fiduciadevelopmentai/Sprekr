@@ -364,6 +364,7 @@ enum FlowBarState: Equatable {
 enum ModelInstallState: Equatable {
     case notInstalled
     case checking
+    case preparing(detail: String)
     case downloading(progress: Double, detail: String)
     case installed(bytes: Int64)
     case failed(message: String)

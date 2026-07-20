@@ -161,7 +161,7 @@ final class EphemeralModelFileFetcher: ModelFileFetching, @unchecked Sendable {
 }
 
 actor PinnedModelInstaller {
-    typealias ProgressHandler = @Sendable (Double, String) -> Void
+    typealias ProgressHandler = @Sendable (ModelPreparationProgress) -> Void
 
     private let modelRoot: URL
     private let manifest: PinnedModelManifest
@@ -200,16 +200,21 @@ actor PinnedModelInstaller {
     ) async throws -> Bool {
         try Self.ensurePrivateDirectory(modelRoot)
         let target = installedDirectory
-        if (try? Self.validateDirectory(target, manifest: manifest)) == true {
-            try Self.enforcePrivatePermissions(at: target)
-            progress?(1, "Verified pinned model")
-            return true
+        if fileManager.fileExists(atPath: target.path) {
+            progress?(.verifying)
+            if (try? Self.validateDirectory(target, manifest: manifest)) == true {
+                try Self.enforcePrivatePermissions(at: target)
+                return true
+            }
         }
 
+        // A read-only refresh must never remove a questionable cache or turn
+        // itself into an implicit network download. Only the explicit install
+        // action is allowed to repair the model directory.
+        guard allowNetwork else { throw PinnedModelError.offlineAndMissing }
         if fileManager.fileExists(atPath: target.path) {
             try fileManager.removeItem(at: target)
         }
-        guard allowNetwork else { throw PinnedModelError.offlineAndMissing }
 
         var lastFailure: Error?
         for attempt in 1...2 {
@@ -227,13 +232,13 @@ actor PinnedModelInstaller {
                 try Self.ensurePrivateDirectory(staging)
                 try await downloadAll(to: staging, progress: progress)
                 try Task.checkCancellation()
+                progress?(.verifying)
                 guard try Self.validateDirectory(staging, manifest: manifest) else {
                     throw PinnedModelError.integrityCheckFailed
                 }
                 try Self.enforcePrivatePermissions(at: staging)
                 try fileManager.moveItem(at: staging, to: target)
                 try Self.enforcePrivatePermissions(at: target)
-                progress?(1, "Verified pinned model")
                 return false
             } catch is CancellationError {
                 throw CancellationError()
@@ -255,11 +260,14 @@ actor PinnedModelInstaller {
         var completedBytes: Int64 = 0
         for (index, entry) in manifest.files.enumerated() {
             try Task.checkCancellation()
-            let label = "Downloading verified model (\(index + 1) of \(manifest.files.count) files)"
             let destination = staging.appendingPathComponent(entry.path)
             if try Self.validateFile(destination, entry: entry) {
                 completedBytes += entry.byteCount
-                progress?(Double(completedBytes) / Double(manifest.totalByteCount), label)
+                progress?(.downloading(
+                    fraction: Double(completedBytes) / Double(manifest.totalByteCount),
+                    currentFile: index + 1,
+                    totalFiles: manifest.files.count
+                ))
                 continue
             }
 
@@ -278,7 +286,11 @@ actor PinnedModelInstaller {
             try fileManager.moveItem(at: part, to: destination)
             try Self.setPermissions(0o600, at: destination)
             completedBytes += entry.byteCount
-            progress?(Double(completedBytes) / Double(manifest.totalByteCount), label)
+            progress?(.downloading(
+                fraction: Double(completedBytes) / Double(manifest.totalByteCount),
+                currentFile: index + 1,
+                totalFiles: manifest.files.count
+            ))
         }
     }
 
