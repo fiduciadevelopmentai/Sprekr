@@ -25,7 +25,7 @@ Sprekr is a free and open-source Fiducia Development project. This file is the p
    ./scripts/update.sh --source
    ```
 
-6. On Windows 11 x64, use only the PowerShell entry points on the `Windows-gebruikers` branch:
+6. On Windows 11 x64, use only the PowerShell entry points from the default `master` branch:
 
    ```powershell
    .\windows\scripts\doctor-windows.ps1
@@ -62,12 +62,12 @@ If a command would cross one of these boundaries, stop and explain the safe manu
 - **Flow Bar:** remain non-activating, show listening/processing/recovery state, and never steal text focus.
 - **Language:** Automatic preserves detected language; Nederlands or English may translate locally through Apple’s Translation framework.
 - **Windows language:** Automatic preserves detected language; explicit Dutch/English retains the source text and reports that local translation is unavailable.
-- **History:** store transcripts locally with AES-GCM and a Keychain-held key; copying/exporting is always user initiated.
+- **History:** store transcripts locally with AES-GCM and keys protected by macOS Keychain or Windows DPAPI `CurrentUser`; copying/exporting is always user initiated.
 - **Insights:** derive local metrics without analyzing other apps.
 - **Dictionary and correction learning:** keep explicit spellings and bounded aliases encrypted; immediate learning inspects only the just-inserted range with a tiny in-memory boundary.
-- **Delivery:** refuse secure/read-only targets, never read a complete `AXValue`, inspect at most 64 characters from the expected inserted segment, and never retry an indeterminate write.
-- **Model:** download only the bundled commit-pinned HTTPS manifest, verify every byte before Core ML loading, then keep FluidAudio offline.
-- **Updates:** reuse the unique local signing certificate so History, Dictionary, Keychain access, and macOS privacy identity remain continuous.
+- **Delivery:** refuse secure/read-only targets, never read a complete target value, inspect at most 64 characters from the expected inserted segment, and never retry an indeterminate write.
+- **Model:** use only the platform's bundled, pinned HTTPS model source, verify every byte before Core ML or ONNX loading, then keep inference offline.
+- **Updates:** preserve all local data and keys; macOS reuses its unique local signing certificate so Keychain access and privacy identity remain continuous.
 
 ## Architecture boundaries
 
