@@ -55,10 +55,16 @@ struct PinnedModelInstallerTests {
             manifest: manifest,
             fetcher: fetcher
         )
+        let progress = ModelProgressRecorder()
 
-        #expect(try await installer.ensureInstalled(allowNetwork: true, progress: nil) == false)
+        #expect(try await installer.ensureInstalled(
+            allowNetwork: true,
+            progress: { progress.record($0) }
+        ) == false)
         #expect(try Data(contentsOf: environment.installedFile) == fixture)
         #expect(fetcher.requestCount == 1)
+        #expect(progress.values.contains(.downloading(fraction: 1, currentFile: 1, totalFiles: 1)))
+        #expect(progress.values.contains(.verifying))
         #expect(try await installer.ensureInstalled(allowNetwork: false, progress: nil))
         #expect(fetcher.requestCount == 1)
     }
@@ -224,6 +230,34 @@ struct PinnedModelInstallerTests {
         #expect(offlineFetcher.requestCount == 0)
     }
 
+    @Test
+    func offlineRefreshPreservesACorruptInstalledCacheAndNeverFetches() async throws {
+        let fixture = Data("correct!".utf8)
+        let corrupt = Data("corrupt!".utf8)
+        let environment = try TestEnvironment()
+        defer { environment.cleanup() }
+        try FileManager.default.createDirectory(
+            at: environment.installedFile.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try corrupt.write(to: environment.installedFile)
+        let fetcher = RecordingModelFetcher { _, _ in
+            Issue.record("Offline refresh attempted a network request")
+            throw CancellationError()
+        }
+        let installer = PinnedModelInstaller(
+            modelRoot: environment.modelRoot,
+            manifest: makeManifest(data: fixture),
+            fetcher: fetcher
+        )
+
+        await #expect(throws: PinnedModelError.self) {
+            _ = try await installer.ensureInstalled(allowNetwork: false, progress: nil)
+        }
+        #expect(fetcher.requestCount == 0)
+        #expect(try Data(contentsOf: environment.installedFile) == corrupt)
+    }
+
     private func makeManifest(data: Data) -> PinnedModelManifest {
         PinnedModelManifest(
             schemaVersion: 1,
@@ -237,6 +271,19 @@ struct PinnedModelInstallerTests {
                 sha256: SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
             )]
         )
+    }
+}
+
+private final class ModelProgressRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var recorded: [ModelPreparationProgress] = []
+
+    var values: [ModelPreparationProgress] {
+        lock.withLock { recorded }
+    }
+
+    func record(_ progress: ModelPreparationProgress) {
+        lock.withLock { recorded.append(progress) }
     }
 }
 

@@ -40,6 +40,12 @@ public struct ModelPreparation: Sendable, Equatable {
     }
 }
 
+public enum ModelPreparationProgress: Sendable, Equatable {
+    case downloading(fraction: Double, currentFile: Int, totalFiles: Int)
+    case verifying
+    case loading
+}
+
 public protocol TranscriptionEngine: Sendable {
     func prepare() async throws -> ModelPreparation
     func transcribe(audioURL: URL, language: TranscriptionLanguage) async throws -> TranscriptionResult
@@ -98,13 +104,20 @@ public actor LocalParakeetEngine: TranscriptionEngine {
     }
 
     public func prepare(
-        progress: (@Sendable (Double, String) -> Void)?
+        progress: (@Sendable (ModelPreparationProgress) -> Void)?
+    ) async throws -> ModelPreparation {
+        try await prepare(allowNetwork: networkAllowed, progress: progress)
+    }
+
+    public func prepare(
+        allowNetwork: Bool,
+        progress: (@Sendable (ModelPreparationProgress) -> Void)?
     ) async throws -> ModelPreparation {
         let startedAt = Date()
         let manifest = try PinnedModelManifest.bundled()
         let installer = PinnedModelInstaller(modelRoot: modelRoot, manifest: manifest)
         let usedExistingModel = try await installer.ensureInstalled(
-            allowNetwork: networkAllowed,
+            allowNetwork: allowNetwork,
             progress: progress
         )
 
@@ -112,7 +125,7 @@ public actor LocalParakeetEngine: TranscriptionEngine {
         // all of its network paths are disabled after Sprekr has verified
         // every byte against the bundled, commit-pinned manifest.
         ModelHub.offlineMode = true
-        progress?(1, "Loading verified model")
+        progress?(.loading)
         let models = try await AsrModels.load(
             from: loaderDirectory,
             version: .v3,

@@ -13,6 +13,11 @@ fail() {
 print "== Repository hygiene =="
 git diff --check
 plutil -lint App/Info.plist >/dev/null
+plutil -lint App/Sprekr.entitlements >/dev/null
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.device.audio-input' App/Sprekr.entitlements 2>/dev/null || true)" == "true" ]] \
+  || fail "Sprekr.entitlements must enable audio input for hardened runtime."
+[[ "$(/usr/libexec/PlistBuddy -c Print App/Sprekr.entitlements 2>/dev/null | awk '/ = / { count++ } END { print count + 0 }')" == "1" ]] \
+  || fail "Sprekr.entitlements may contain only the required audio-input entitlement."
 for script in scripts/*.sh; do zsh -n "$script"; done
 xcrun swift scripts/verify-fonts.swift
 ruby -e 'require "yaml"; (Dir[".github/workflows/*.{yml,yaml}"] + [".github/dependabot.yml", ".github/ISSUE_TEMPLATE/bug.yml", ".github/ISSUE_TEMPLATE/config.yml"]).each { |file| YAML.load_file(file) }'
@@ -103,7 +108,10 @@ fi
 
 print "== Tests and application bundles =="
 make test
-./scripts/build-app.sh debug >/dev/null
+audio_input_requirement='=entitlement["com.apple.security.device.audio-input"]'
+debug_app="$(./scripts/build-app.sh debug)"
+codesign --verify -R "$audio_input_requirement" "$debug_app" >/dev/null 2>&1 \
+  || fail "The debug bundle lacks the audio-input entitlement."
 release_app="$(./scripts/build-app.sh release)"
 [[ "${release_app:t}" == "Sprekr.app" ]] || fail "The release bundle is not named Sprekr.app."
 [[ -x "$release_app/Contents/MacOS/Sprekr" ]] || fail "The Sprekr executable is missing from the release bundle."
@@ -112,6 +120,8 @@ release_app="$(./scripts/build-app.sh release)"
 codesign --verify --deep --strict "$release_app"
 codesign -d --verbose=4 "$release_app" 2>&1 | /usr/bin/grep 'runtime' >/dev/null \
   || fail "The release verification bundle lacks hardened runtime."
+codesign --verify -R "$audio_input_requirement" "$release_app" >/dev/null 2>&1 \
+  || fail "The release verification bundle lacks the audio-input entitlement."
 for font in Onest-Regular.otf Onest-Medium.otf Onest-Bold.otf CrimsonText-Regular.ttf Lucide.ttf; do
   [[ -f "$release_app/Contents/Resources/$font" ]] || fail "Bundled font is missing: $font"
 done
@@ -141,6 +151,8 @@ trap cleanup_mount EXIT
 hdiutil attach -nobrowse -readonly -mountpoint "$mount" "$dmg" >/dev/null
 bundled="$mount/Sprekr.app"
 codesign --verify --deep --strict "$bundled"
+codesign --verify -R "$audio_input_requirement" "$bundled" >/dev/null 2>&1 \
+  || fail "The development DMG lacks the audio-input entitlement."
 if find "$bundled" -iname '*satoshi*' -o -iname '*sparkle*' | /usr/bin/grep .; then
   fail "Removed content exists in the development DMG."
 fi

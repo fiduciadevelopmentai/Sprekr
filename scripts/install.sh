@@ -7,6 +7,7 @@ APP_NAME="$SPREKR_PRODUCT_NAME"
 LEGACY_APP_NAME="$SPREKR_LEGACY_APPLICATION_NAME"
 BUNDLE_IDENTIFIER="$SPREKR_BUNDLE_IDENTIFIER"
 DESTINATION="${SPREKR_INSTALL_DIR:-${KLIM_TALKS_INSTALL_DIR:-/Applications}}"
+AUDIO_INPUT_REQUIREMENT='=entitlement["com.apple.security.device.audio-input"]'
 LAUNCH_AFTER_INSTALL=1
 SOURCE_REQUESTED=0
 STAGED_APP=""
@@ -94,7 +95,7 @@ plist_value() {
 }
 
 requirement_for() {
-  print -r -- "=designated => identifier \"$BUNDLE_IDENTIFIER\" and certificate leaf = H\"$1\""
+  print -r -- "=identifier \"$BUNDLE_IDENTIFIER\" and certificate leaf = H\"$1\""
 }
 
 validate_bundle() {
@@ -112,6 +113,8 @@ validate_bundle() {
   requirement="$(requirement_for "$fingerprint")"
   codesign --verify -R "$requirement" "$app" \
     || fail "The source build does not match its certificate-bound designated requirement."
+  codesign --verify -R "$AUDIO_INPUT_REQUIREMENT" "$app" >/dev/null 2>&1 \
+    || fail "The source build is missing the required audio-input entitlement."
   local signature_details
   signature_details="$(codesign -d --verbose=4 "$app" 2>&1)"
   [[ "$signature_details" == *runtime* ]] || fail "The source build is missing hardened runtime."
@@ -121,7 +124,7 @@ validate_existing_identity() {
   local target="$1"
   local fingerprint="$2"
   local requirement details
-  [[ -e "$target" || -L "$target" ]] || return
+  [[ -e "$target" || -L "$target" ]] || return 0
   app_is_running "$target" \
     && fail "Quit ${target:t:r} from its menu before updating it. The installer will not force-quit the app."
 

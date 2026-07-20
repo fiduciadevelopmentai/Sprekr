@@ -7,6 +7,9 @@ CONFIGURATION="${1:-debug}"
 BUILD_ARGS=()
 OUTPUT_DIR="$ROOT/build/$CONFIGURATION"
 SIGNING_IDENTITY=""
+ENTITLEMENTS="$ROOT/App/Sprekr.entitlements"
+AUDIO_INPUT_REQUIREMENT='=entitlement["com.apple.security.device.audio-input"]'
+PLIST_BUDDY=/usr/libexec/PlistBuddy
 shift || true
 
 while (( $# )); do
@@ -30,6 +33,19 @@ if [[ -n "${SPREKR_SWIFT_SCRATCH_PATH:-}" ]]; then
   BUILD_ARGS+=(--scratch-path "$SPREKR_SWIFT_SCRATCH_PATH")
 fi
 
+if [[ ! -f "$ENTITLEMENTS" ]]; then
+  echo "Missing Sprekr hardened-runtime entitlements." >&2
+  exit 1
+fi
+if [[ "$("$PLIST_BUDDY" -c 'Print :com.apple.security.device.audio-input' "$ENTITLEMENTS" 2>/dev/null || true)" != "true" ]]; then
+  echo "Sprekr must enable the hardened-runtime audio-input entitlement." >&2
+  exit 1
+fi
+if [[ "$("$PLIST_BUDDY" -c Print "$ENTITLEMENTS" 2>/dev/null | awk '/ = / { count++ } END { print count + 0 }')" != "1" ]]; then
+  echo "Sprekr may request only the required audio-input entitlement." >&2
+  exit 1
+fi
+
 cd "$ROOT"
 swift build "${BUILD_ARGS[@]}" --product "$SPREKR_PRODUCT_NAME" >&2
 
@@ -44,7 +60,6 @@ if [[ "$CONFIGURATION" == "release" ]]; then
   strip -S "$APP/Contents/MacOS/$SPREKR_PRODUCT_NAME"
 fi
 
-PLIST_BUDDY=/usr/libexec/PlistBuddy
 SPREKR_VERSION_VALUE="${SPREKR_VERSION:-${KLIM_TALKS_VERSION:-}}"
 SPREKR_BUILD_NUMBER_VALUE="${SPREKR_BUILD_NUMBER:-${KLIM_TALKS_BUILD_NUMBER:-}}"
 if [[ -n "$SPREKR_VERSION_VALUE" ]]; then
@@ -116,22 +131,27 @@ if [[ -n "$SIGNING_IDENTITY" ]]; then
     echo "The local signing identity must be a 40-character SHA-1 certificate fingerprint." >&2
     exit 1
   fi
-  REQUIREMENT="=designated => identifier \"$SPREKR_BUNDLE_IDENTIFIER\" and certificate leaf = H\"$SIGNING_IDENTITY\""
+  DESIGNATED_REQUIREMENT="=identifier \"$SPREKR_BUNDLE_IDENTIFIER\" and certificate leaf = H\"$SIGNING_IDENTITY\""
+  REQUIREMENTS="=designated => ${DESIGNATED_REQUIREMENT#=}"
   codesign --force --sign "$SIGNING_IDENTITY" --options runtime \
-    --requirements "$REQUIREMENT" "$APP" >/dev/null
+    --entitlements "$ENTITLEMENTS" --requirements "$REQUIREMENTS" "$APP" >/dev/null
   codesign --verify --deep --strict --verbose=2 "$APP"
-  codesign --verify -R "$REQUIREMENT" "$APP"
+  codesign --verify -R "$DESIGNATED_REQUIREMENT" "$APP"
 else
   # Ad-hoc bundles are isolated under a development bundle identifier, so they
   # cannot impersonate an installed source build for TCC or Keychain access.
   "$PLIST_BUDDY" -c "Set :CFBundleIdentifier $SPREKR_DEVELOPMENT_BUNDLE_IDENTIFIER" "$APP/Contents/Info.plist"
-  codesign --force --sign - --options runtime "$APP" >/dev/null
+  codesign --force --sign - --options runtime --entitlements "$ENTITLEMENTS" "$APP" >/dev/null
   codesign --verify --deep --strict --verbose=2 "$APP"
 fi
 
 SIGNATURE_DETAILS="$(codesign -d --verbose=4 "$APP" 2>&1)"
 if [[ "$SIGNATURE_DETAILS" != *runtime* ]]; then
   echo "The app signature is missing hardened runtime." >&2
+  exit 1
+fi
+if ! codesign --verify -R "$AUDIO_INPUT_REQUIREMENT" "$APP" >/dev/null 2>&1; then
+  echo "The signed app is missing the required audio-input entitlement." >&2
   exit 1
 fi
 

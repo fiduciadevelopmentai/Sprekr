@@ -33,7 +33,7 @@ enum OnboardingReadinessPolicy {
         case .notInstalled: .install
         case .failed: .retry
         case .installed: .continueFlow
-        case .checking, .downloading: .none
+        case .checking, .preparing, .downloading: .none
         }
     }
 
@@ -67,6 +67,37 @@ enum OnboardingReadinessPolicy {
             return "Sprekr could not activate your talk controls yet. Check Accessibility and try again."
         }
         return nil
+    }
+}
+
+enum OnboardingDictationButtonState: Equatable {
+    case idle
+    case starting
+    case recording
+    case transcribing
+
+    static func resolve(
+        isStarting: Bool,
+        isRecording: Bool,
+        isTranscribing: Bool
+    ) -> Self {
+        if isRecording { return .recording }
+        if isStarting { return .starting }
+        if isTranscribing { return .transcribing }
+        return .idle
+    }
+
+    var title: String {
+        switch self {
+        case .idle: "Start dictation"
+        case .starting: "Starting…"
+        case .recording: "Stop dictation"
+        case .transcribing: "Transcribing…"
+        }
+    }
+
+    var isDisabled: Bool {
+        self == .starting || self == .transcribing
     }
 }
 
@@ -614,7 +645,12 @@ struct OnboardingView: View {
     }
 
     private var testContent: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        let buttonState = OnboardingDictationButtonState.resolve(
+            isStarting: controller.isStartingDictation,
+            isRecording: audioCapture.isRecording,
+            isTranscribing: controller.isTranscribing
+        )
+        return VStack(alignment: .leading, spacing: 18) {
             OnboardingCopy(
                 eyebrow: "FIRST DICTATION",
                 title: "Try a thought out loud.",
@@ -626,11 +662,11 @@ struct OnboardingView: View {
                 .frame(height: 120)
                 .padding(10)
                 .sprekrSurface()
-            Button(audioCapture.isRecording ? "Stop dictation" : controller.isTranscribing ? "Transcribing…" : "Start dictation") {
+            Button(buttonState.title) {
                 controller.toggleOnboardingTestDictation()
             }
                 .buttonStyle(SprekrPrimaryButtonStyle())
-                .disabled(controller.isTranscribing)
+                .disabled(buttonState.isDisabled)
         }
     }
 
@@ -1059,16 +1095,36 @@ private struct MicrophoneLevelMeter: View {
 }
 
 struct ModelProgressView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let state: ModelInstallState
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             switch state {
-            case .notInstalled: Text("Ready to download").font(SprekrTypography.body(14, relativeTo: .body))
-            case .checking: Text("Checking local storage…").font(SprekrTypography.body(14, relativeTo: .body))
+            case .notInstalled:
+                Text("Ready to download")
+                    .font(SprekrTypography.body(14, relativeTo: .body))
+            case .checking:
+                busyStatus(ModelProgressPresentation.checkingTitle)
+            case let .preparing(detail):
+                busyStatus(detail)
             case let .downloading(progress, detail):
-                ProgressView(value: progress)
-                Text(detail).font(SprekrTypography.body(12, relativeTo: .caption)).foregroundStyle(SprekrPalette.secondaryText)
+                let percentage = ModelProgressPresentation.percentage(for: progress)
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 9) {
+                        busyIndicator
+                        Text(ModelProgressPresentation.downloadTitle(percentage: percentage))
+                            .font(SprekrTypography.body(14, relativeTo: .body))
+                    }
+                    ProgressView(value: min(max(progress, 0), 1))
+                        .tint(SprekrPalette.accent)
+                    Text(detail)
+                        .font(SprekrTypography.body(12, relativeTo: .caption))
+                        .foregroundStyle(SprekrPalette.secondaryText)
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Downloading speech model")
+                .accessibilityValue("\(percentage) percent, \(detail)")
             case let .installed(bytes):
                 Label("Installed — \(ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file))", systemImage: "checkmark.circle.fill")
                     .foregroundStyle(SprekrPalette.accent)
@@ -1078,5 +1134,42 @@ struct ModelProgressView: View {
         }
         .padding(14)
         .sprekrSurface()
+    }
+
+    private func busyStatus(_ text: String) -> some View {
+        HStack(spacing: 9) {
+            busyIndicator
+            Text(text)
+                .font(SprekrTypography.body(14, relativeTo: .body))
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(text)
+    }
+
+    @ViewBuilder
+    private var busyIndicator: some View {
+        if reduceMotion {
+            Image(systemName: "hourglass")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(SprekrPalette.icon)
+                .accessibilityHidden(true)
+        } else {
+            ProgressView()
+                .controlSize(.small)
+                .tint(SprekrPalette.accent)
+                .accessibilityHidden(true)
+        }
+    }
+}
+
+enum ModelProgressPresentation {
+    static let checkingTitle = "Checking for a model on this Mac…"
+
+    static func percentage(for progress: Double) -> Int {
+        Int((min(max(progress, 0), 1) * 100).rounded())
+    }
+
+    static func downloadTitle(percentage: Int) -> String {
+        "Downloading speech model — \(percentage)%"
     }
 }

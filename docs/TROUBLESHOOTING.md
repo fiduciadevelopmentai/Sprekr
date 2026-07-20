@@ -24,6 +24,7 @@ It reports architecture, macOS/Swift versions, free space, installed signature/v
 ## Permissions and delivery
 
 - **No waveform:** select an input and guide the user through Microphone access in System Settings.
+- **Microphone is enabled but onboarding still says it is denied:** after migrating a legacy ad-hoc build, macOS may still display the old build's consent while the certificate-bound build needs one normal consent prompt. Run `make doctor`, reinstall only with `./scripts/install.sh --source`, and approve the normal Microphone prompt. If the switch remains stale, quit Sprekr normally, switch Sprekr off and on once in System Settings, and reopen it. Never reset TCC.
 - **Hold/Toggle do nothing:** check Accessibility and both independent controls. Do not reset TCC or simulate consent.
 - **Transcript not inserted:** confirm the focused target is editable and not secure/read-only. The transcript remains in encrypted History and may be copied for manual Command-V. Never dump the target field.
 - **History cannot unlock:** allow the normal Keychain prompt. If encrypted files exist but their key is missing, preserve everything and stop; a replacement key would make recovery impossible.

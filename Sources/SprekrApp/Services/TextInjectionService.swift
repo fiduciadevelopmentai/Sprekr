@@ -197,28 +197,88 @@ enum ClipboardRestorationPolicy {
     }
 }
 
-enum ManualAccessibilityActivationResult: Equatable {
-    case enabled
-    case alreadyEnabled
+enum AccessibilityActivationAttribute: String, CaseIterable, Hashable {
+    case manual = "AXManualAccessibility"
+    case enhancedUserInterface = "AXEnhancedUserInterface"
+}
+
+enum AccessibilityActivationOutcome: Equatable {
+    case accepted
     case unsupported
     case failed
 }
 
-enum ManualAccessibilityPolicy {
-    static let attribute = "AXManualAccessibility"
-    static let retryDelaysMilliseconds = [40, 80, 160]
+struct AccessibilityActivationRecord: Equatable {
+    let requestedAt: Date
+    let outcomes: [AccessibilityActivationAttribute: AccessibilityActivationOutcome]
 
-    static func shouldRetryTargetResolution(
-        after result: ManualAccessibilityActivationResult
-    ) -> Bool {
-        result == .enabled || result == .alreadyEnabled
+    var acceptedAnyRequest: Bool {
+        outcomes.values.contains(.accepted)
+    }
+}
+
+enum AccessibilityActivationPolicy {
+    /// Absolute checkpoints from the first activation request. Chromium on
+    /// modern macOS deliberately debounces AXEnhancedUserInterface for about
+    /// two seconds, so the last check leaves a small readiness margin without
+    /// imposing that delay on apps whose tree is already available.
+    static let retryCheckpointsMilliseconds = [40, 120, 280, 600, 1_200, 2_250]
+
+    static func remainingRetryDelaysMilliseconds(
+        requestedAt: Date,
+        now: Date
+    ) -> [Int] {
+        let elapsed = max(
+            0,
+            Int((now.timeIntervalSince(requestedAt) * 1_000).rounded(.down))
+        )
+        var previousCheckpoint = elapsed
+        return retryCheckpointsMilliseconds.compactMap { checkpoint in
+            guard checkpoint > elapsed else { return nil }
+            defer { previousCheckpoint = checkpoint }
+            return checkpoint - previousCheckpoint
+        }
+    }
+}
+
+struct AccessibilityActivationCoordinator<Key: Hashable> {
+    private(set) var records: [Key: AccessibilityActivationRecord] = [:]
+
+    mutating func requestIfNeeded(
+        for key: Key,
+        at date: Date,
+        request: (AccessibilityActivationAttribute) -> AXError
+    ) -> AccessibilityActivationRecord {
+        if let existing = records[key] { return existing }
+
+        var outcomes: [AccessibilityActivationAttribute: AccessibilityActivationOutcome] = [:]
+        for attribute in AccessibilityActivationAttribute.allCases {
+            outcomes[attribute] = Self.outcome(for: request(attribute))
+        }
+        let record = AccessibilityActivationRecord(requestedAt: date, outcomes: outcomes)
+        records[key] = record
+        return record
+    }
+
+    private static func outcome(for error: AXError) -> AccessibilityActivationOutcome {
+        switch error {
+        case .success:
+            .accepted
+        case .attributeUnsupported, .notImplemented, .illegalArgument:
+            .unsupported
+        default:
+            .failed
+        }
     }
 }
 
 @MainActor
 protocol AccessibilityTreeClient {
     func focusedElement(in application: AXUIElement) -> AXUIElement?
-    func enableManualAccessibility(in application: AXUIElement) -> AXError
+    func requestActivation(
+        _ attribute: AccessibilityActivationAttribute,
+        in application: AXUIElement
+    ) -> AXError
     func wait(milliseconds: Int) async
 }
 
@@ -237,10 +297,13 @@ struct SystemAccessibilityTreeClient: AccessibilityTreeClient {
         return (focused as! AXUIElement)
     }
 
-    func enableManualAccessibility(in application: AXUIElement) -> AXError {
+    func requestActivation(
+        _ attribute: AccessibilityActivationAttribute,
+        in application: AXUIElement
+    ) -> AXError {
         AXUIElementSetAttributeValue(
             application,
-            ManualAccessibilityPolicy.attribute as CFString,
+            attribute.rawValue as CFString,
             kCFBooleanTrue
         )
     }
@@ -327,13 +390,15 @@ final class TextInjectionService {
     private var insertionCandidate: InsertionCandidate?
     private var correctionObservationTask: Task<Void, Never>?
     private let accessibilityTreeClient: any AccessibilityTreeClient
-    private var enabledAccessibilityTrees: Set<ProcessIdentity> = []
-    private var unsupportedAccessibilityTrees: Set<ProcessIdentity> = []
+    private let now: () -> Date
+    private var accessibilityActivation = AccessibilityActivationCoordinator<ProcessIdentity>()
 
     init(
-        accessibilityTreeClient: any AccessibilityTreeClient = SystemAccessibilityTreeClient()
+        accessibilityTreeClient: any AccessibilityTreeClient = SystemAccessibilityTreeClient(),
+        now: @escaping () -> Date = Date.init
     ) {
         self.accessibilityTreeClient = accessibilityTreeClient
+        self.now = now
     }
 
     func prepareForDictation() {
@@ -380,7 +445,10 @@ final class TextInjectionService {
             in: app,
             applicationElement: applicationElement
         ) else { return }
-        _ = enableManualAccessibility(for: app, applicationElement: applicationElement)
+        _ = requestAccessibilityActivation(
+            for: app,
+            applicationElement: applicationElement
+        )
     }
 
     private func resolveDeliveryTarget() async -> TargetResolution {
@@ -398,15 +466,19 @@ final class TextInjectionService {
                 break
             }
 
-            let activation = enableManualAccessibility(
+            let activation = requestAccessibilityActivation(
                 for: app,
                 applicationElement: applicationElement
             )
-            guard ManualAccessibilityPolicy.shouldRetryTargetResolution(after: activation) else {
+            guard activation.acceptedAnyRequest else {
                 return .unavailable
             }
 
-            for delay in ManualAccessibilityPolicy.retryDelaysMilliseconds {
+            let retryDelays = AccessibilityActivationPolicy.remainingRetryDelaysMilliseconds(
+                requestedAt: activation.requestedAt,
+                now: now()
+            )
+            for delay in retryDelays {
                 await accessibilityTreeClient.wait(milliseconds: delay)
                 guard Self.currentProcessIdentity() == identity else {
                     appChangeCount += 1
@@ -430,23 +502,14 @@ final class TextInjectionService {
         return .unavailable
     }
 
-    private func enableManualAccessibility(
+    private func requestAccessibilityActivation(
         for app: NSRunningApplication,
         applicationElement: AXUIElement
-    ) -> ManualAccessibilityActivationResult {
+    ) -> AccessibilityActivationRecord {
         let identity = Self.processIdentity(for: app)
-        if enabledAccessibilityTrees.contains(identity) { return .alreadyEnabled }
-        if unsupportedAccessibilityTrees.contains(identity) { return .unsupported }
-
-        switch accessibilityTreeClient.enableManualAccessibility(in: applicationElement) {
-        case .success:
-            enabledAccessibilityTrees.insert(identity)
-            return .enabled
-        case .attributeUnsupported, .notImplemented, .illegalArgument:
-            unsupportedAccessibilityTrees.insert(identity)
-            return .unsupported
-        default:
-            return .failed
+        let client = accessibilityTreeClient
+        return accessibilityActivation.requestIfNeeded(for: identity, at: now()) { attribute in
+            client.requestActivation(attribute, in: applicationElement)
         }
     }
 

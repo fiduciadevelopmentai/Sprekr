@@ -6,7 +6,7 @@ This document records the release controls for the source-only Sprekr beta. It i
 
 - Onest 1.000 Regular, Medium, and Bold replace the redistribution-restricted Satoshi files under SIL OFL-1.1.
 - Sparkle, artifact installation, the release-signing helper, feed configuration, and the Homebrew template are removed. The only supported install/update commands are source-based.
-- Local source installs use a unique login-Keychain certificate, user-domain trust restricted to code signing, hardened runtime, and a designated requirement bound to both the production bundle ID and certificate fingerprint.
+- Local source installs use a unique login-Keychain certificate, user-domain trust restricted to code signing, hardened runtime with only the required audio-input entitlement, and a designated requirement bound to both the production bundle ID and certificate fingerprint.
 - Ad-hoc development bundles use `com.klimtalks.app.development` and cannot impersonate the installed source build. Their DMG name ends in `development-adhoc`.
 - Existing AES-GCM keys migrate transactionally to `.v2` Keychain accounts with `WhenUnlockedThisDeviceOnly`; ciphertext without a key is preserved and rejected instead of receiving a replacement key.
 - Application Support and model directories use `0700`; encrypted stores, signing metadata, temporary audio, model files, and plaintext exports use `0600`.
@@ -37,7 +37,7 @@ Run on Apple silicon with macOS 14 and again on the current macOS release:
 
 1. Start from a clean user-owned checkout and run `make doctor`.
 2. Run `./scripts/install.sh --source`; approve only the expected login-Keychain prompts.
-3. Verify `codesign -d -r-` shows both `com.klimtalks.app` and a certificate-leaf hash, and `codesign -d --verbose=4` shows hardened runtime.
+3. Verify `codesign -d -r-` shows both `com.klimtalks.app` and a certificate-leaf hash, `codesign -d --verbose=4` shows hardened runtime, and `codesign --verify -R '=entitlement["com.apple.security.device.audio-input"]' /Applications/Sprekr.app` succeeds.
 4. Complete onboarding, pinned model download, Microphone, Accessibility, Hold, Toggle, Escape, and first dictation.
 5. Verify TextEdit and one Chromium/Electron editor; confirm secure/read-only targets are refused and offline dictation works.
 6. Test source update. Confirm the designated requirement is unchanged, TCC is not requested again, and History/Dictionary/model data remain intact.
