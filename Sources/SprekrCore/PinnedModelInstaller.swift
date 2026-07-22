@@ -112,10 +112,31 @@ struct ModelDownloadResponse: @unchecked Sendable {
     let temporaryFile: URL
     let statusCode: Int
     let contentRange: String?
+    let removeTemporaryFileAfterUse: Bool
+
+    init(
+        temporaryFile: URL,
+        statusCode: Int,
+        contentRange: String?,
+        removeTemporaryFileAfterUse: Bool = false
+    ) {
+        self.temporaryFile = temporaryFile
+        self.statusCode = statusCode
+        self.contentRange = contentRange
+        self.removeTemporaryFileAfterUse = removeTemporaryFileAfterUse
+    }
+}
+
+struct ModelDownloadTransferProgress: Equatable, Sendable {
+    let bytesReceived: Int64
+    let statusCode: Int?
 }
 
 protocol ModelFileFetching: Sendable {
-    func download(_ request: URLRequest) async throws -> ModelDownloadResponse
+    func download(
+        _ request: URLRequest,
+        progress: (@Sendable (ModelDownloadTransferProgress) -> Void)?
+    ) async throws -> ModelDownloadResponse
 }
 
 private final class HTTPSOnlySessionDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
@@ -147,16 +168,120 @@ final class EphemeralModelFileFetcher: ModelFileFetching, @unchecked Sendable {
         session = URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
     }
 
-    func download(_ request: URLRequest) async throws -> ModelDownloadResponse {
-        let (temporaryFile, response) = try await session.download(for: request)
-        guard let response = response as? HTTPURLResponse else {
-            throw PinnedModelError.invalidResponse(request.url?.lastPathComponent ?? "model file", -1)
+    func download(
+        _ request: URLRequest,
+        progress: (@Sendable (ModelDownloadTransferProgress) -> Void)?
+    ) async throws -> ModelDownloadResponse {
+        let taskReference = ModelDownloadTaskReference()
+        let progressTask: Task<Void, Never>? = if let progress {
+            Task.detached(priority: .utility) {
+                while true {
+                    let snapshot = taskReference.snapshot()
+                    progress(ModelDownloadTransferProgress(
+                        bytesReceived: snapshot.bytesReceived,
+                        statusCode: snapshot.statusCode
+                    ))
+                    if snapshot.isFinished { break }
+                    try? await Task.sleep(for: .milliseconds(100))
+                }
+            }
+        } else {
+            nil
         }
-        return ModelDownloadResponse(
-            temporaryFile: temporaryFile,
-            statusCode: response.statusCode,
-            contentRange: response.value(forHTTPHeaderField: "Content-Range")
-        )
+
+        do {
+            let response = try await withTaskCancellationHandler {
+                try await withCheckedThrowingContinuation {
+                    (continuation: CheckedContinuation<ModelDownloadResponse, Error>) in
+                    let task = session.downloadTask(with: request) { temporaryFile, response, error in
+                        if let error {
+                            if (error as? URLError)?.code == .cancelled {
+                                continuation.resume(throwing: CancellationError())
+                            } else {
+                                continuation.resume(throwing: error)
+                            }
+                            return
+                        }
+                        guard let temporaryFile,
+                              let response = response as? HTTPURLResponse else {
+                            continuation.resume(throwing: PinnedModelError.invalidResponse(
+                                request.url?.lastPathComponent ?? "model file",
+                                -1
+                            ))
+                            return
+                        }
+
+                        let retainedFile = FileManager.default.temporaryDirectory.appendingPathComponent(
+                            "sprekr-model-download-\(UUID().uuidString).tmp"
+                        )
+                        do {
+                            try FileManager.default.copyItem(at: temporaryFile, to: retainedFile)
+                            try FileManager.default.setAttributes(
+                                [.posixPermissions: 0o600],
+                                ofItemAtPath: retainedFile.path
+                            )
+                            continuation.resume(returning: ModelDownloadResponse(
+                                temporaryFile: retainedFile,
+                                statusCode: response.statusCode,
+                                contentRange: response.value(forHTTPHeaderField: "Content-Range"),
+                                removeTemporaryFileAfterUse: true
+                            ))
+                        } catch {
+                            try? FileManager.default.removeItem(at: retainedFile)
+                            continuation.resume(throwing: error)
+                        }
+                    }
+                    taskReference.install(task)
+                    task.resume()
+                }
+            } onCancel: {
+                taskReference.cancel()
+            }
+            await progressTask?.value
+            return response
+        } catch {
+            await progressTask?.value
+            throw error
+        }
+    }
+}
+
+private final class ModelDownloadTaskReference: @unchecked Sendable {
+    struct Snapshot: Sendable {
+        let bytesReceived: Int64
+        let statusCode: Int?
+        let isFinished: Bool
+    }
+
+    private let lock = NSLock()
+    private var task: URLSessionDownloadTask?
+    private var cancellationRequested = false
+
+    func install(_ task: URLSessionDownloadTask) {
+        lock.withLock {
+            self.task = task
+            if cancellationRequested { task.cancel() }
+        }
+    }
+
+    func cancel() {
+        lock.withLock {
+            cancellationRequested = true
+            task?.cancel()
+        }
+    }
+
+    func snapshot() -> Snapshot {
+        lock.withLock {
+            guard let task else {
+                return Snapshot(bytesReceived: 0, statusCode: nil, isFinished: false)
+            }
+            return Snapshot(
+                bytesReceived: max(0, task.countOfBytesReceived),
+                statusCode: (task.response as? HTTPURLResponse)?.statusCode,
+                isFinished: task.state == .completed
+            )
+        }
     }
 }
 
@@ -276,7 +401,18 @@ actor PinnedModelInstaller {
             }
             try Self.ensurePrivateDirectory(destination.deletingLastPathComponent())
             let part = destination.appendingPathExtension("part")
-            try await download(entry, to: part)
+            let completedBeforeFile = completedBytes
+            let totalModelBytes = manifest.totalByteCount
+            let totalFiles = manifest.files.count
+            try await download(entry, to: part) { currentFileBytes in
+                let totalDownloaded = completedBeforeFile
+                    + min(max(currentFileBytes, 0), entry.byteCount)
+                progress?(.downloading(
+                    fraction: Double(totalDownloaded) / Double(totalModelBytes),
+                    currentFile: index + 1,
+                    totalFiles: totalFiles
+                ))
+            }
             guard try Self.validateFile(part, entry: entry) else {
                 if fileManager.fileExists(atPath: part.path) {
                     try fileManager.removeItem(at: part)
@@ -294,7 +430,11 @@ actor PinnedModelInstaller {
         }
     }
 
-    private func download(_ entry: PinnedModelManifest.FileEntry, to part: URL) async throws {
+    private func download(
+        _ entry: PinnedModelManifest.FileEntry,
+        to part: URL,
+        progress: (@Sendable (Int64) -> Void)?
+    ) async throws {
         let existingBytes = Self.fileSize(at: part) ?? 0
         if existingBytes > entry.byteCount {
             try fileManager.removeItem(at: part)
@@ -310,11 +450,27 @@ actor PinnedModelInstaller {
         request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
         request.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
         let finalOffset = Self.fileSize(at: part) ?? 0
+        progress?(finalOffset)
         if finalOffset > 0 {
             request.setValue("bytes=\(finalOffset)-", forHTTPHeaderField: "Range")
         }
 
-        let response = try await fetcher.download(request)
+        let response = try await fetcher.download(request) { transfer in
+            let currentFileBytes = switch transfer.statusCode {
+            case 206:
+                finalOffset + transfer.bytesReceived
+            case nil:
+                max(finalOffset, transfer.bytesReceived)
+            default:
+                transfer.bytesReceived
+            }
+            progress?(currentFileBytes)
+        }
+        defer {
+            if response.removeTemporaryFileAfterUse {
+                try? fileManager.removeItem(at: response.temporaryFile)
+            }
+        }
         try Task.checkCancellation()
         switch response.statusCode {
         case 200:

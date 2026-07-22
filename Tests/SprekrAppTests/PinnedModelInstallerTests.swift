@@ -70,13 +70,49 @@ struct PinnedModelInstallerTests {
     }
 
     @Test
+    func downloadReportsByteProgressBeforeTheCurrentFileCompletes() async throws {
+        let fixture = Data("abcdefgh".utf8)
+        let environment = try TestEnvironment()
+        defer { environment.cleanup() }
+        let responseFile = try environment.write(fixture, named: "response.bin")
+        let fetcher = RecordingModelFetcher(
+            simulatedProgress: [.init(bytesReceived: 4, statusCode: 200)]
+        ) { _, _ in
+            ModelDownloadResponse(
+                temporaryFile: responseFile,
+                statusCode: 200,
+                contentRange: nil
+            )
+        }
+        let installer = PinnedModelInstaller(
+            modelRoot: environment.modelRoot,
+            manifest: makeManifest(data: fixture),
+            fetcher: fetcher
+        )
+        let progress = ModelProgressRecorder()
+
+        _ = try await installer.ensureInstalled(
+            allowNetwork: true,
+            progress: { progress.record($0) }
+        )
+
+        #expect(progress.values.contains(.downloading(
+            fraction: 0.5,
+            currentFile: 1,
+            totalFiles: 1
+        )))
+    }
+
+    @Test
     func resumeUses206AndTheExactStablePartOffset() async throws {
         let fixture = Data("abcdefgh".utf8)
         let environment = try TestEnvironment()
         defer { environment.cleanup() }
         try environment.preparePart(Data("abcd".utf8))
         let responseFile = try environment.write(Data("efgh".utf8), named: "remainder.bin")
-        let fetcher = RecordingModelFetcher { request, _ in
+        let fetcher = RecordingModelFetcher(
+            simulatedProgress: [.init(bytesReceived: 2, statusCode: 206)]
+        ) { request, _ in
             #expect(request.value(forHTTPHeaderField: "Range") == "bytes=4-")
             return ModelDownloadResponse(
                 temporaryFile: responseFile,
@@ -89,10 +125,19 @@ struct PinnedModelInstallerTests {
             manifest: makeManifest(data: fixture),
             fetcher: fetcher
         )
+        let progress = ModelProgressRecorder()
 
-        _ = try await installer.ensureInstalled(allowNetwork: true, progress: nil)
+        _ = try await installer.ensureInstalled(
+            allowNetwork: true,
+            progress: { progress.record($0) }
+        )
         #expect(try Data(contentsOf: environment.installedFile) == fixture)
         #expect(fetcher.requestCount == 1)
+        #expect(progress.values.contains(.downloading(
+            fraction: 0.75,
+            currentFile: 1,
+            totalFiles: 1
+        )))
     }
 
     @Test
@@ -292,9 +337,14 @@ private final class RecordingModelFetcher: ModelFileFetching, @unchecked Sendabl
 
     private let lock = NSLock()
     private let handler: Handler
+    private let simulatedProgress: [ModelDownloadTransferProgress]
     private var requests: [URLRequest] = []
 
-    init(handler: @escaping Handler) {
+    init(
+        simulatedProgress: [ModelDownloadTransferProgress] = [],
+        handler: @escaping Handler
+    ) {
+        self.simulatedProgress = simulatedProgress
         self.handler = handler
     }
 
@@ -302,11 +352,15 @@ private final class RecordingModelFetcher: ModelFileFetching, @unchecked Sendabl
         lock.withLock { requests.count }
     }
 
-    func download(_ request: URLRequest) async throws -> ModelDownloadResponse {
+    func download(
+        _ request: URLRequest,
+        progress: (@Sendable (ModelDownloadTransferProgress) -> Void)?
+    ) async throws -> ModelDownloadResponse {
         let index = lock.withLock {
             requests.append(request)
             return requests.count
         }
+        simulatedProgress.forEach { progress?($0) }
         return try handler(request, index)
     }
 }
