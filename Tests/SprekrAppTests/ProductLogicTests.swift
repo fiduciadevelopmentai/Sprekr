@@ -1615,6 +1615,35 @@ struct ProductLogicTests {
     }
 
     @Test
+    func flowBarMovesCloserOnlyWhenTheDockIsBelowTheScreen() {
+        let screen = NSRect(x: 0, y: 0, width: 1_728, height: 1_117)
+        let bottomDock = NSRect(x: 0, y: 70, width: 1_728, height: 1_008)
+        let leftDock = NSRect(x: 74, y: 0, width: 1_654, height: 1_078)
+        let rightDock = NSRect(x: 0, y: 0, width: 1_654, height: 1_078)
+
+        #expect(FlowBarGeometry.bottomInset(
+            for: .idle,
+            screenFrame: screen,
+            visibleFrame: bottomDock
+        ) == 4)
+        #expect(FlowBarGeometry.bottomInset(
+            for: .listening,
+            screenFrame: screen,
+            visibleFrame: bottomDock
+        ) == 8)
+        #expect(FlowBarGeometry.bottomInset(
+            for: .idle,
+            screenFrame: screen,
+            visibleFrame: leftDock
+        ) == 14)
+        #expect(FlowBarGeometry.bottomInset(
+            for: .listening,
+            screenFrame: screen,
+            visibleFrame: rightDock
+        ) == 18)
+    }
+
+    @Test
     func flowBarMessagesFitTheirContentWithinCompactBounds() {
         let deadline = Date(timeIntervalSinceReferenceDate: 10_000)
         let short = FlowBarGeometry.panelSize(

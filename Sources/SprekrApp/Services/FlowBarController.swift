@@ -42,6 +42,16 @@ enum FlowBarGeometry {
     static func bottomInset(for state: FlowBarState) -> CGFloat {
         state == .idle ? 14 : 18
     }
+
+    static func bottomInset(
+        for state: FlowBarState,
+        screenFrame: NSRect,
+        visibleFrame: NSRect
+    ) -> CGFloat {
+        let dockIsBelow = visibleFrame.minY > screenFrame.minY
+        guard dockIsBelow else { return bottomInset(for: state) }
+        return state == .idle ? 4 : 8
+    }
 }
 
 enum FlowBarHoverPolicy {
@@ -416,11 +426,16 @@ final class FlowBarController: NSObject, ObservableObject {
         let screen = preferredScreenNumber.flatMap { preferredNumber in
             NSScreen.screens.first { Self.screenNumber($0) == preferredNumber }
         } ?? NSScreen.main ?? NSScreen.screens.first
-        guard let frame = screen?.visibleFrame else { return }
+        guard let screen else { return }
+        let frame = screen.visibleFrame
         let size = panelSize
         let targetFrame = NSRect(
             x: frame.midX - size.width / 2,
-            y: frame.minY + FlowBarGeometry.bottomInset(for: state),
+            y: frame.minY + FlowBarGeometry.bottomInset(
+                for: state,
+                screenFrame: screen.frame,
+                visibleFrame: frame
+            ),
             width: size.width,
             height: size.height
         )
