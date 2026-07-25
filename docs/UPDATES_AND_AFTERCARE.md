@@ -20,7 +20,8 @@ The updater:
 4. signs with hardened runtime and a designated requirement bound to the bundle ID and certificate fingerprint;
 5. verifies the staged app before atomic replacement;
 6. stops if an already certificate-signed installation has a different identity;
-7. leaves Application Support data, Keychain encryption keys, preferences, and the model untouched.
+7. leaves Application Support data, Keychain encryption keys, preferences, and the model untouched;
+8. by default removes repo `build/debug` and `build/release` Sprekr.app bundles (and other ad-hoc/`.development` copies) so Accessibility and Microphone do not keep a second Sprekr row — pass `--no-cleanup-stale-apps` to keep them, or `--remove-other-installs` to also delete a second certificate-bound Sprekr.app outside the destination.
 
 The first transition from a legacy ad-hoc development install is recognized explicitly and may require the user to approve macOS permissions once. Every later source update must retain the certificate identity.
 

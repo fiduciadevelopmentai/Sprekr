@@ -19,6 +19,15 @@ struct DictionaryView: View {
         !controller.dictionaryEntries.isEmpty || !controller.spokenWords.isEmpty
     }
 
+    private var builtInTerms: [(category: TermLexicon.Category, terms: [String])] {
+        TermLexicon.entriesByCategory.compactMap { group in
+            let matching = group.entries
+                .map(\.canonical)
+                .filter { query.isEmpty || $0.localizedCaseInsensitiveContains(query) }
+            return matching.isEmpty ? nil : (group.category, matching)
+        }
+    }
+
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 24) {
@@ -67,11 +76,15 @@ struct DictionaryView: View {
                         }
                     }
 
-                    if corrections.isEmpty && uncommonWords.isEmpty {
+                    if corrections.isEmpty && uncommonWords.isEmpty && builtInTerms.isEmpty {
                         searchEmptyState
                     }
                 } else {
                     firstUseState
+                }
+
+                if !builtInTerms.isEmpty {
+                    builtInSection
                 }
             }
             .padding(.horizontal, 36)
@@ -218,6 +231,35 @@ struct DictionaryView: View {
                 .stroke(SprekrPalette.line.opacity(0.72), lineWidth: 1)
         }
         .accessibilityElement(children: .contain)
+    }
+
+    private var builtInSection: some View {
+        dictionarySection(
+            title: "Built-in terms",
+            detail: controller.settings.values.vocabularyAssist
+                ? "Spellings Sprekr already knows. A saved correction of your own always overrides one."
+                : "Turned off in Settings under Vocabulary assistance.",
+            count: builtInTerms.reduce(0) { $0 + $1.terms.count }
+        ) {
+            VStack(alignment: .leading, spacing: 12) {
+                ForEach(builtInTerms, id: \.category) { group in
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(group.category.rawValue.uppercased())
+                            .font(SprekrTypography.body(10, weight: .semibold, relativeTo: .caption))
+                            .tracking(1.15)
+                            .foregroundStyle(SprekrPalette.secondaryText)
+                        Text(group.terms.joined(separator: " · "))
+                            .font(SprekrTypography.body(13, relativeTo: .body))
+                            .foregroundStyle(
+                                controller.settings.values.vocabularyAssist
+                                    ? SprekrPalette.primaryText
+                                    : SprekrPalette.secondaryText
+                            )
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+            }
+        }
     }
 
     private var firstUseState: some View {

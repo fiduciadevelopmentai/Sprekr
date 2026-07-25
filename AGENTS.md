@@ -18,12 +18,16 @@ Sprekr is a free and open-source Fiducia Development project. This file is the p
    ./scripts/install.sh --source
    ```
 
+   That installs the certificate-bound app (usually `/Applications/Sprekr.app`) and, by default, removes repo `build/debug` and `build/release` Sprekr.app bundles so they cannot create a second Accessibility/Microphone row under `com.klimtalks.app.development`. Never open `build/debug/Sprekr.app` or `build/release/Sprekr.app` for daily use when a certificate-bound install exists — those ad-hoc builds are a separate TCC client with the same display name.
+
 5. For an update, first inspect `git status`. Do not pull over local changes. When the checkout is clean and the user requested an update:
 
    ```sh
    git pull --ff-only
    ./scripts/update.sh --source
    ```
+
+   After developing in the checkout, deliver daily-use changes with that install/update path rather than launching a build-tree app.
 
 6. On Windows 11 x64, use only the PowerShell entry points from the default `master` branch:
 
@@ -120,7 +124,7 @@ The scheduled model test may use only the synthetic WAV bundled in the pinned sh
 3. **The signing identity is missing/different:** stop. Do not use ad-hoc signing. Ask whether the user intentionally removed the Keychain identity and explain that a new identity can require permissions again; preserve data.
 4. **The model is absent:** reconnect temporarily and use the in-app download. If integrity fails, retry once through the app. Never delete outside `~/Library/Application Support/Klim Talks/Models/parakeet-tdt-0.6b-v3`.
 5. **Microphone is denied:** guide the user to System Settings from the app; do not reset TCC.
-6. **Accessibility or talk controls fail:** quit normally if an update is needed, guide the user to the app’s System Settings link, then retry registration. Never force-quit or simulate consent.
+6. **Accessibility or talk controls fail:** quit normally if an update is needed, guide the user to the app’s System Settings link, then retry registration. Never force-quit or simulate consent. If System Settings shows two Sprekr rows, the user likely enabled a stale `build/*/Sprekr.app` or `.development` copy while the installed `/Applications/Sprekr.app` is running — open only the installed app, enable that row, and re-run `./scripts/install.sh --source` so stale build apps are removed.
 7. **Text was not inserted:** confirm the target is editable and non-secure. The transcript remains in encrypted History and may already be in the clipboard for manual Command-V. Do not dump target content.
 8. **History or Dictionary cannot unlock:** let the user approve the normal Keychain prompt. If encrypted files exist but the key is missing, stop and preserve both files; never generate a replacement key.
 9. **A test fails:** report the exact command and sanitized failure. Do not weaken hashes, permissions, signatures, secure-field checks, or assertions to make it green.

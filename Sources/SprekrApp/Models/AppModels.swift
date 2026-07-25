@@ -185,6 +185,7 @@ struct SprekrSettings: Codable, Equatable {
     var toggleShortcut: ShortcutConfiguration = .optionSpace
     var microphoneUID: String?
     var smartFormatting = true
+    var vocabularyAssist = true
     var learnFromCorrections = true
 
     var shortcut: ShortcutConfiguration {
@@ -214,6 +215,7 @@ struct SprekrSettings: Codable, Equatable {
         case toggleShortcut
         case microphoneUID
         case smartFormatting
+        case vocabularyAssist
         case learnFromCorrections
     }
 
@@ -242,6 +244,7 @@ struct SprekrSettings: Codable, Equatable {
         }
         microphoneUID = try container.decodeIfPresent(String.self, forKey: .microphoneUID)
         smartFormatting = try container.decodeIfPresent(Bool.self, forKey: .smartFormatting) ?? true
+        vocabularyAssist = try container.decodeIfPresent(Bool.self, forKey: .vocabularyAssist) ?? true
         learnFromCorrections = try container.decodeIfPresent(Bool.self, forKey: .learnFromCorrections) ?? true
     }
 
@@ -260,6 +263,7 @@ struct SprekrSettings: Codable, Equatable {
         try container.encode(toggleShortcut, forKey: .toggleShortcut)
         try container.encodeIfPresent(microphoneUID, forKey: .microphoneUID)
         try container.encode(smartFormatting, forKey: .smartFormatting)
+        try container.encode(vocabularyAssist, forKey: .vocabularyAssist)
         try container.encode(learnFromCorrections, forKey: .learnFromCorrections)
     }
 }

@@ -7,6 +7,18 @@ struct DictationLanguagePlan: Equatable {
     let sourceLanguage: RecognitionLanguage
     let outputLanguage: RecognitionLanguage
     let requiresTranslation: Bool
+    /// True when the other language is clearly present too, so the dictation
+    /// code-switched rather than being written in one language.
+    let hasMixedSource: Bool
+
+    /// The language the formatting passes should run in. A mixed dictation uses
+    /// `.automatic`, which every pass already implements as the union of the
+    /// Dutch and English tables, so English phrasing inside Dutch speech keeps
+    /// its own handling. The translation decision deliberately keeps using
+    /// `sourceLanguage`.
+    var formattingLanguage: RecognitionLanguage {
+        hasMixedSource ? .automatic : sourceLanguage
+    }
 
     static func resolve(
         text: String,
@@ -14,19 +26,22 @@ struct DictationLanguagePlan: Equatable {
     ) -> DictationLanguagePlan {
         make(
             detectedSource: SpokenLanguageDetector.detect(in: text),
-            outputPreference: outputPreference
+            outputPreference: outputPreference,
+            hasMixedSource: SpokenLanguageDetector.isMixed(in: text)
         )
     }
 
     static func make(
         detectedSource: RecognitionLanguage?,
-        outputPreference: RecognitionLanguage
+        outputPreference: RecognitionLanguage,
+        hasMixedSource: Bool = false
     ) -> DictationLanguagePlan {
         guard outputPreference != .automatic else {
             return DictationLanguagePlan(
                 sourceLanguage: detectedSource ?? .automatic,
                 outputLanguage: detectedSource ?? .automatic,
-                requiresTranslation: false
+                requiresTranslation: false,
+                hasMixedSource: hasMixedSource
             )
         }
 
@@ -35,7 +50,8 @@ struct DictationLanguagePlan: Equatable {
         return DictationLanguagePlan(
             sourceLanguage: sourceLanguage,
             outputLanguage: outputPreference,
-            requiresTranslation: sourceLanguage != outputPreference
+            requiresTranslation: sourceLanguage != outputPreference,
+            hasMixedSource: hasMixedSource
         )
     }
 }
@@ -50,6 +66,21 @@ enum SpokenLanguageDetector {
         default: return nil
         }
     }
+
+    /// Whole-transcript detection reports one dominant language, which silently
+    /// switches off the other language's tables for the entire dictation. When
+    /// both Dutch and English carry real weight, report the mix instead.
+    static func isMixed(in text: String) -> Bool {
+        let recognizer = NLLanguageRecognizer()
+        recognizer.processString(text)
+        let hypotheses = recognizer.languageHypotheses(withMaximum: maximumHypotheses)
+        let dutch = hypotheses[.dutch] ?? 0
+        let english = hypotheses[.english] ?? 0
+        return min(dutch, english) >= mixedLanguageThreshold
+    }
+
+    private static let maximumHypotheses = 4
+    private static let mixedLanguageThreshold = 0.15
 }
 
 enum LocalTranslationError: LocalizedError {

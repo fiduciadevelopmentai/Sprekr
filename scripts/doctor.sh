@@ -3,6 +3,7 @@ set -u
 
 ROOT="${0:A:h:h}"
 source "$ROOT/scripts/product-identity.sh"
+source "$ROOT/scripts/sprekr-app-inventory.sh"
 APP_NAME="$SPREKR_PRODUCT_NAME"
 LEGACY_APP_NAME="$SPREKR_LEGACY_APPLICATION_NAME"
 DESTINATION="${SPREKR_INSTALL_DIR:-${KLIM_TALKS_INSTALL_DIR:-/Applications}}"
@@ -47,6 +48,25 @@ if [[ -d "$APP" && -d "$LEGACY_APP" ]]; then
 elif [[ ! -d "$APP" && -d "$LEGACY_APP" ]]; then
   APP="$LEGACY_APP"
   warn "Installed app: legacy $LEGACY_APP_NAME.app name found; the next source install will migrate it to $APP_NAME.app"
+fi
+
+other_app_count=0
+installed_resolved=""
+if [[ -d "$APP" ]]; then
+  installed_resolved="${APP:A}"
+fi
+while IFS= read -r candidate; do
+  [[ -n "$candidate" ]] || continue
+  resolved="${candidate:A}"
+  if [[ -n "$installed_resolved" && "$resolved" == "$installed_resolved" ]]; then
+    ok "Active install candidate: $(sprekr_describe_app_line "$candidate")"
+    continue
+  fi
+  other_app_count=$((other_app_count + 1))
+  warn "Extra app bundle: $(sprekr_describe_app_line "$candidate")"
+done < <(sprekr_enumerate_candidate_apps)
+if (( other_app_count > 0 )); then
+  warn "Multiple $APP_NAME app bundles can create duplicate Accessibility/Microphone rows. Prefer $DESTINATION/$APP_NAME.app and run ./scripts/install.sh --source (cleanup-stale-apps is on by default)."
 fi
 
 if [[ -d "$APP" ]]; then

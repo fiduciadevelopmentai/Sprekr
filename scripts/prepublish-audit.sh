@@ -38,8 +38,9 @@ while IFS= read -r legacy_file; do
     AGENTS.md|ARCHITECTURE.md|App/Info.plist|PRIVACY.md|README.md|SECURITY.md|\
     Sources/SprekrCore/SprekrIdentity.swift|Tests/SprekrAppTests/ProductLogicTests.swift|\
     docs/AGENT_INSTALL.md|docs/RELEASING.md|docs/SECURITY_AUDIT.md|docs/TROUBLESHOOTING.md|\
-    scripts/build-app.sh|scripts/doctor.sh|scripts/install.sh|\
-    scripts/local-signing-identity.sh|scripts/package.sh|scripts/product-identity.sh|\
+    scripts/build-app.sh|scripts/cleanup-stale-dock-pins.py|scripts/doctor.sh|\
+    scripts/install.sh|scripts/local-signing-identity.sh|scripts/package.sh|\
+    scripts/product-identity.sh|scripts/sprekr-app-inventory.sh|\
     scripts/uninstall.sh|scripts/update.sh)
       ;;
     *)
