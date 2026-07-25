@@ -131,6 +131,7 @@ final class SprekrAppController: ObservableObject {
         let destination: DictationDeliveryDestination
         let outputLanguage: RecognitionLanguage
         let smartFormatting: Bool
+        let vocabularyAssist: Bool
         let restoredAfterCancellation: Bool
 
         func restoringCancelledRecording() -> Self {
@@ -138,6 +139,7 @@ final class SprekrAppController: ObservableObject {
                 destination: destination,
                 outputLanguage: outputLanguage,
                 smartFormatting: smartFormatting,
+                vocabularyAssist: vocabularyAssist,
                 restoredAfterCancellation: true
             )
         }
@@ -667,12 +669,23 @@ final class SprekrAppController: ObservableObject {
             destination: dictationDestinationState.finishRecording(),
             outputLanguage: settings.values.recognitionLanguage,
             smartFormatting: settings.values.smartFormatting,
+            vocabularyAssist: settings.values.vocabularyAssist,
             restoredAfterCancellation: false
         )
         hotkey.setDictationActive(false)
         levelTask?.cancel()
         levelTask = nil
         return context
+    }
+
+    /// Spellings the user already owns. Word repair must never second-guess
+    /// these, because the Dictionary pass is the authority on them.
+    private func protectedDictionaryTerms() -> Set<String> {
+        Set(
+            dictionaryEntries
+                .flatMap { [$0.preferredSpelling] + $0.aliases }
+                .map { $0.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current) }
+        )
     }
 
     private func beginTranscription(audioURL: URL, context: DictationDeliveryContext) {
@@ -700,25 +713,39 @@ final class SprekrAppController: ObservableObject {
                     text: transcribed.text,
                     outputPreference: context.outputLanguage
                 )
-                let numberedSource = SpokenNumberFormatter.format(
-                    transcribed.text,
-                    spokenLanguage: languagePlan.sourceLanguage,
-                    outputLanguage: languagePlan.outputLanguage
-                )
-                let symbolizedSource = SpokenSymbolFormatter.format(
-                    numberedSource,
-                    language: languagePlan.sourceLanguage
-                )
-                let emailStructuredSource = SpokenEmailFormatter.format(
-                    symbolizedSource,
-                    language: languagePlan.sourceLanguage
-                )
-                let formattedSource = context.smartFormatting
-                    ? TranscriptFormatter.format(
-                        emailStructuredSource,
+                // Smart formatting runs the number, symbol and email passes
+                // itself. Running them here as well would reformat number
+                // grouping back into the source language on a translated
+                // dictation, so they only stand in when it is switched off.
+                let formattedSource: String
+                if context.smartFormatting {
+                    var options = TranscriptFormatter.Options()
+                    options.outputLanguage = languagePlan.outputLanguage
+                    options.vocabularyAssist = context.vocabularyAssist
+                    if context.vocabularyAssist {
+                        options.speller = LexicalRepairFormatter.Speller.system()
+                        options.protectedTerms = self.protectedDictionaryTerms()
+                    }
+                    formattedSource = TranscriptFormatter.format(
+                        transcribed.text,
+                        language: languagePlan.formattingLanguage,
+                        options: options
+                    )
+                } else {
+                    let numberedSource = SpokenNumberFormatter.format(
+                        transcribed.text,
+                        spokenLanguage: languagePlan.sourceLanguage,
+                        outputLanguage: languagePlan.outputLanguage
+                    )
+                    let symbolizedSource = SpokenSymbolFormatter.format(
+                        numberedSource,
                         language: languagePlan.sourceLanguage
                     )
-                    : emailStructuredSource
+                    formattedSource = SpokenEmailFormatter.format(
+                        symbolizedSource,
+                        language: languagePlan.sourceLanguage
+                    )
+                }
                 guard !formattedSource.isEmpty else {
                     // Empty audio can finish recognition almost immediately. Keep
                     // the processing capsule visible for the same minimum period

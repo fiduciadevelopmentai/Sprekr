@@ -4,17 +4,48 @@ import Foundation
 /// remains responsible for the words and most punctuation; this layer only
 /// handles high-confidence speech repairs, patterns, and explicit layout phrases.
 enum TranscriptFormatter {
-    static func format(_ transcript: String, language: RecognitionLanguage) -> String {
+    struct Options {
+        /// Only differs from the spoken language when the transcript will be
+        /// translated; number grouping and decimals follow the delivered text.
+        var outputLanguage: RecognitionLanguage?
+        /// Owns the built-in term lexicon and the spell-checked word repair.
+        var vocabularyAssist = true
+        /// Local spelling knowledge. Word repair is skipped when absent, which
+        /// keeps the pass off any thread that must not touch `NSSpellChecker`.
+        var speller: LexicalRepairFormatter.Speller?
+        /// Spellings the user already owns, so word repair leaves them alone.
+        var protectedTerms: Set<String> = []
+
+        init() {}
+    }
+
+    static func format(
+        _ transcript: String,
+        language: RecognitionLanguage,
+        options: Options = Options()
+    ) -> String {
         let numbered = SpokenNumberFormatter.format(
             transcript,
             spokenLanguage: language,
-            outputLanguage: language
+            outputLanguage: options.outputLanguage ?? language
         )
         let symbolized = SpokenSymbolFormatter.format(numbered, language: language)
         var text = SpokenEmailFormatter.format(symbolized, language: language)
         guard !text.isEmpty else { return "" }
 
         text = SelfCorrectionFormatter.clean(text, language: language)
+        if options.vocabularyAssist {
+            text = TermLexicon.normalize(text)
+            if let speller = options.speller {
+                text = LexicalRepairFormatter.repair(
+                    text,
+                    language: language,
+                    speller: speller,
+                    protectedTerms: options.protectedTerms
+                )
+            }
+        }
+        text = SentenceBoundaryFormatter.restore(text, language: language)
         text = ConversationalPunctuationFormatter.soften(text, language: language)
         text = replaceLayoutCommands(in: text, language: language)
         text = replaceTerminalPunctuationCommands(in: text, language: language)
@@ -22,8 +53,12 @@ enum TranscriptFormatter {
         text = DiscourseStructureFormatter.formatPointSections(in: text, language: language)
         text = DiscourseStructureFormatter.formatOrdinalSections(in: text, language: language)
         text = LongFormParagraphFormatter.structure(text, language: language)
+        // Question inference stays ahead of list building on purpose: a spoken
+        // request such as "zou jij ... over poesjes, over leeuwen en over
+        // honden" is a question that then becomes a list, and it keeps its mark.
         text = inferQuestionMark(in: text, language: language)
         text = DiscourseStructureFormatter.formatIntentLists(in: text, language: language)
+        text = SentenceCaseFormatter.apply(text)
         return normalizeSpacing(in: text)
     }
 

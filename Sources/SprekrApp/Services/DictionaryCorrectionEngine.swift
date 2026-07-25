@@ -235,7 +235,7 @@ enum DictionaryCorrectionEngine {
         return winners.count == 1 ? winners[0] : nil
     }
 
-    private static func damerauLevenshteinDistance(
+    static func damerauLevenshteinDistance(
         _ source: [Character],
         _ target: [Character],
         limit: Int
