@@ -1461,6 +1461,259 @@ struct ProductLogicTests {
     }
 
     @Test
+    func phoneticallyHeardEnglishTermsGetTheirCanonicalSpelling() {
+        #expect(
+            TermLexicon.normalize("Ik werk op mijn macboek met gitte hub en tsjat gpt.")
+                == "Ik werk op mijn MacBook met GitHub en ChatGPT."
+        )
+        #expect(
+            TermLexicon.normalize("We deployen naar versel met een soepabase database.")
+                == "We deployen naar Vercel met een Supabase database."
+        )
+        #expect(
+            TermLexicon.normalize("Open ex code en start de wie es code extensie.")
+                == "Open Xcode en start de VS Code extensie."
+        )
+    }
+
+    @Test
+    func lexiconFixesCasingWithoutTouchingDeliberateLowercaseBrands() {
+        #expect(TermLexicon.normalize("github en javascript") == "GitHub en JavaScript")
+        #expect(TermLexicon.normalize("Draai npm install") == "Draai npm install")
+        #expect(TermLexicon.normalize("Mijn iphone en ipad") == "Mijn iPhone en iPad")
+        #expect(TermLexicon.isCaseLocked("npm"))
+        #expect(TermLexicon.isCaseLocked("iPhone"))
+        #expect(!TermLexicon.isCaseLocked("GitHub"))
+    }
+
+    @Test
+    func lexiconLeavesOrdinaryWordsAloneWithoutAContextCue() {
+        // "cursor", "claude", "appel" and "swift" are ordinary words; only an
+        // explicit product context may promote them to a brand spelling.
+        #expect(
+            TermLexicon.normalize("Zet de cursor achter het woord.")
+                == "Zet de cursor achter het woord."
+        )
+        #expect(
+            TermLexicon.normalize("Ik eet een appel.") == "Ik eet een appel."
+        )
+        #expect(
+            TermLexicon.normalize("De cursor agent schrijft de code.")
+                == "De Cursor agent schrijft de code."
+        )
+        #expect(
+            TermLexicon.normalize("Het claude model van anthropic.")
+                == "Het Claude model van Anthropic."
+        )
+    }
+
+    @Test
+    func lexiconNeverRewritesInsideAddressesUrlsOrPaths() {
+        #expect(
+            TermLexicon.normalize("Mail naar github@voorbeeld.nl")
+                == "Mail naar github@voorbeeld.nl"
+        )
+        #expect(
+            TermLexicon.normalize("Zie https://github.com/sprekr")
+                == "Zie https://github.com/sprekr"
+        )
+        #expect(
+            TermLexicon.normalize("Het pad is ~/projects/github/app")
+                == "Het pad is ~/projects/github/app"
+        )
+    }
+
+    /// Deterministic stand-in for the local macOS dictionaries so the repair
+    /// gates are tested rather than whichever languages this machine installed.
+    private static func fakeSpeller(
+        known: Set<String>,
+        guesses: [String: [String]]
+    ) -> LexicalRepairFormatter.Speller {
+        LexicalRepairFormatter.Speller(
+            isKnown: { word, _ in known.contains(word.lowercased()) },
+            guesses: { word, _ in guesses[word.lowercased()] ?? [] }
+        )
+    }
+
+    @Test
+    func recognizerNonWordIsRepairedFromTheLocalDictionary() {
+        let speller = Self.fakeSpeller(
+            known: ["bericht", "heb", "hele", "ingesproken", "dit"],
+            guesses: ["insproken": ["ingesproken", "besproken", "uitgesproken"]]
+        )
+        #expect(
+            LexicalRepairFormatter.repair(
+                "Dit hele bericht heb ik insproken.",
+                language: .dutch,
+                speller: speller
+            ) == "Dit hele bericht heb ik ingesproken."
+        )
+    }
+
+    @Test
+    func lexicalRepairStaysSilentWhenTheDictionaryIsAmbiguousOrDistant() {
+        let ambiguous = Self.fakeSpeller(
+            known: ["dit"],
+            guesses: ["stelen": ["spelen", "stalen"]]
+        )
+        #expect(
+            LexicalRepairFormatter.repair("Dit stelen", language: .dutch, speller: ambiguous)
+                == "Dit stelen"
+        )
+
+        let distant = Self.fakeSpeller(
+            known: ["dit"],
+            guesses: ["kwabbel": ["onderhandeling"]]
+        )
+        #expect(
+            LexicalRepairFormatter.repair("Dit kwabbel", language: .dutch, speller: distant)
+                == "Dit kwabbel"
+        )
+    }
+
+    @Test
+    func lexicalRepairSkipsNamesShortWordsLexiconTermsAndAddresses() {
+        let speller = Self.fakeSpeller(
+            known: [],
+            guesses: [
+                "jibreel": ["gebruikt"],
+                "macboek": ["gebruik"],
+                "tweak": ["tweede"],
+                "github": ["gebruik"],
+            ]
+        )
+        // A capital marks a possible name, short words are never repaired, and
+        // lexicon terms plus addresses are owned by other passes.
+        #expect(
+            LexicalRepairFormatter.repair("Jibreel tweak", language: .dutch, speller: speller)
+                == "Jibreel tweak"
+        )
+        #expect(
+            LexicalRepairFormatter.repair("mail github@site.nl", language: .dutch, speller: speller)
+                == "mail github@site.nl"
+        )
+        #expect(
+            LexicalRepairFormatter.repair("zie github.com/x", language: .dutch, speller: speller)
+                == "zie github.com/x"
+        )
+    }
+
+    @Test
+    func lexicalRepairRespectsPersonalDictionaryTerms() {
+        let speller = Self.fakeSpeller(
+            known: ["de"],
+            guesses: ["sprekr": ["spreker"]]
+        )
+        #expect(
+            LexicalRepairFormatter.repair(
+                "de sprekr",
+                language: .dutch,
+                speller: speller,
+                protectedTerms: ["sprekr"]
+            ) == "de sprekr"
+        )
+    }
+
+    @Test
+    func unpunctuatedLongRunRegainsSentenceBoundaries() {
+        let transcript = "Dus misschien kan je aan de hand van hoe ik dit inspreek en hoe "
+            + "die het format al kijken van oké kijk dit doet die fout hier kan ik hem in "
+            + "verbeteren dus laat mij dat even weten oké doe even een goed onderzoek en "
+            + "kijk waar we de applicatie kunnen verbeteren"
+        let restored = SentenceBoundaryFormatter.restore(transcript, language: .dutch)
+
+        #expect(restored.contains("van. Oké kijk dit"))
+        #expect(restored.contains("verbeteren. Dus laat mij"))
+        #expect(restored.hasSuffix("verbeteren."))
+    }
+
+    @Test
+    func fullPipelineStructuresAnUnpunctuatedDictation() {
+        let transcript = "Dus misschien kan je aan de hand van hoe ik dit inspreek en hoe "
+            + "die het format al kijken van oké kijk dit doet die fout hier kan ik hem in "
+            + "verbeteren dus laat mij dat even weten oké doe even een goed onderzoek en "
+            + "kijk waar we de applicatie kunnen verbeteren"
+        // The conversational softener deliberately pulls the third boundary back
+        // to a comma, which is why only two full stops survive.
+        #expect(
+            TranscriptFormatter.format(transcript, language: .dutch)
+                == "Dus misschien kan je aan de hand van hoe ik dit inspreek en hoe die het "
+                + "format al kijken van. Oké kijk dit doet die fout hier kan ik hem in "
+                + "verbeteren, dus laat mij dat even weten. Oké doe even een goed onderzoek "
+                + "en kijk waar we de applicatie kunnen verbeteren."
+        )
+    }
+
+    @Test
+    func sentenceCaseRaisesLettersAfterAnInternalBoundaryOnly() {
+        #expect(
+            SentenceCaseFormatter.apply("dit is een zin. en dit ook. klaar.")
+                == "dit is een zin. En dit ook. Klaar."
+        )
+        #expect(
+            SentenceCaseFormatter.apply("werkt het? ja, prima!  echt waar.")
+                == "werkt het? Ja, prima!  Echt waar."
+        )
+    }
+
+    /// Sprekr inserts at the caret, so the opening word may be continuing a
+    /// sentence that is already on screen. Paragraphs and bullets keep the
+    /// casing their own layout passes produced.
+    @Test
+    func sentenceCaseNeverRaisesTheFirstWordAParagraphOrABullet() {
+        #expect(SentenceCaseFormatter.apply("is dit veilig?") == "is dit veilig?")
+        #expect(
+            SentenceCaseFormatter.apply("Eerste zin\n\ntweede zin") == "Eerste zin\n\ntweede zin"
+        )
+        #expect(
+            SentenceCaseFormatter.apply("Taken\n• eerste punt\n• tweede punt")
+                == "Taken\n• eerste punt\n• tweede punt"
+        )
+    }
+
+    @Test
+    func sentenceCaseSkipsIdentifiersDeliberateBrandsAndNeverLowercases() {
+        #expect(SentenceCaseFormatter.apply("start. github.com/x") == "start. github.com/x")
+        #expect(SentenceCaseFormatter.apply("mail. a.saed@site.nl") == "mail. a.saed@site.nl")
+        #expect(SentenceCaseFormatter.apply("het kost 3.5 euro") == "het kost 3.5 euro")
+        #expect(
+            SentenceCaseFormatter.apply("dat werkt. npm install draait.")
+                == "dat werkt. npm install draait."
+        )
+        #expect(
+            SentenceCaseFormatter.apply("klaar. macOS is bijgewerkt.")
+                == "klaar. macOS is bijgewerkt."
+        )
+        #expect(SentenceCaseFormatter.apply("Dit. Blijft Zo.") == "Dit. Blijft Zo.")
+    }
+
+    @Test
+    func sentenceRestorationLeavesShortAndAlreadyPunctuatedTextAlone() {
+        let short = "Dus dit is kort en blijft zo staan"
+        #expect(SentenceBoundaryFormatter.restore(short, language: .dutch) == short)
+
+        let punctuated = "Dit is de eerste zin. Dus dit is de tweede zin en die blijft heel."
+        #expect(SentenceBoundaryFormatter.restore(punctuated, language: .dutch) == punctuated)
+    }
+
+    @Test
+    func sentenceRestorationKeepsSubordinateClausesAndVerblessFragmentsIntact() {
+        // "dus dat" opens a subordinate clause, so it is never a sentence start.
+        let subordinate = "Ik heb het hele bericht vanochtend nog een keer ingesproken en "
+            + "daarbij goed geluisterd naar de opname dus dat is precies de reden waarom ik "
+            + "dit nu aan jou laat zien en vraag"
+        #expect(
+            SentenceBoundaryFormatter.restore(subordinate, language: .dutch) == subordinate
+        )
+    }
+
+    @Test
+    func lexiconPreservesDictatedCapitalisationForOrdinaryCodeSwitchWords() {
+        #expect(TermLexicon.normalize("Tweeken doe ik graag.") == "Tweaken doe ik graag.")
+        #expect(TermLexicon.normalize("deploien naar productie") == "deployen naar productie")
+    }
+
+    @Test
     func truncatedRepeatedRecognizerTailIsRemoved() {
         let transcript = "Jongens, stop met betalen voor Whisperflow. Ik ben hem even aan het tweeken. Wat extra intelligentie aan het geven. En voordat je het weet zijn we het grootst groeiende bedrijf van heel Arnhem gehad gehad gehad geh"
 
@@ -2226,6 +2479,61 @@ struct ProductLogicTests {
     func localLanguageDetectorDistinguishesClearDutchAndEnglishSpeech() {
         #expect(SpokenLanguageDetector.detect(in: "Dit is een duidelijke Nederlandse zin over een lokale microfoon.") == .dutch)
         #expect(SpokenLanguageDetector.detect(in: "This is a clear English sentence about a private local microphone.") == .english)
+    }
+
+    @Test
+    func mixedLanguagePlanKeepsTranslationSourceButFormatsWithBothTables() {
+        let mixed = DictationLanguagePlan.make(
+            detectedSource: .dutch,
+            outputPreference: .automatic,
+            hasMixedSource: true
+        )
+        let pure = DictationLanguagePlan.make(
+            detectedSource: .dutch,
+            outputPreference: .automatic,
+            hasMixedSource: false
+        )
+
+        #expect(mixed.sourceLanguage == .dutch)
+        #expect(mixed.formattingLanguage == .automatic)
+        #expect(!mixed.requiresTranslation)
+        #expect(pure.formattingLanguage == .dutch)
+    }
+
+    @Test
+    func vocabularyAssistCanBeDisabledWithoutLosingSmartFormatting() {
+        var options = TranscriptFormatter.Options()
+        options.vocabularyAssist = false
+        #expect(
+            TranscriptFormatter.format(
+                "Ik werk op mijn macboek met gitte hub.",
+                language: .dutch,
+                options: options
+            ) == "Ik werk op mijn macboek met gitte hub."
+        )
+        #expect(
+            TranscriptFormatter.format(
+                "Ik werk op mijn macboek met gitte hub.",
+                language: .dutch
+            ) == "Ik werk op mijn MacBook met GitHub."
+        )
+    }
+
+    @Test
+    func vocabularyAssistDefaultsOnAndSurvivesSettingsRoundTrip() throws {
+        var settings = SprekrSettings()
+        #expect(settings.vocabularyAssist)
+        settings.vocabularyAssist = false
+        let data = try JSONEncoder().encode(settings)
+        let decoded = try JSONDecoder().decode(SprekrSettings.self, from: data)
+        #expect(!decoded.vocabularyAssist)
+
+        let legacy = #"{"onboardingCompleted":true,"smartFormatting":true,"learnFromCorrections":true}"#
+        let fromLegacy = try JSONDecoder().decode(
+            SprekrSettings.self,
+            from: Data(legacy.utf8)
+        )
+        #expect(fromLegacy.vocabularyAssist)
     }
 
     @Test

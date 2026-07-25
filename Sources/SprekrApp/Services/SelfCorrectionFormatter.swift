@@ -6,7 +6,6 @@ enum SelfCorrectionFormatter {
     static func clean(_ transcript: String, language: RecognitionLanguage) -> String {
         var text = transcript
         text = normalizeKnownBrands(in: text)
-        text = normalizeCommonCodeSwitches(in: text)
         text = removeTruncatedTrailingEcho(in: text)
         text = collapseExcessiveTrailingWordRun(in: text)
         text = applySpellingInstructions(in: text, language: language)
@@ -57,44 +56,6 @@ enum SelfCorrectionFormatter {
                 range: NSRange(result.startIndex..., in: result),
                 withTemplate: replacement
             )
-        }
-        return result
-    }
-
-    /// Corrects a deliberately small set of common Dutch/English code-switch
-    /// spellings. These are high-confidence orthographic fixes, not language
-    /// guesses; the user's editable Dictionary still runs afterwards and can
-    /// override the final preferred spelling.
-    private static func normalizeCommonCodeSwitches(in text: String) -> String {
-        let replacements = [
-            "getweekt": "getweakt",
-            "tweeken": "tweaken",
-            "tweeking": "tweaking",
-            "tweeked": "tweaked",
-            "tweekt": "tweakt",
-            "tweek": "tweak",
-        ]
-        var result = text
-
-        for (source, replacement) in replacements {
-            let escaped = NSRegularExpression.escapedPattern(for: source)
-            guard let expression = try? NSRegularExpression(
-                pattern: #"(?<![\p{L}\p{N}])\#(escaped)(?![\p{L}\p{N}])"#,
-                options: [.caseInsensitive]
-            ) else { continue }
-
-            let matches = expression.matches(
-                in: result,
-                range: NSRange(result.startIndex..., in: result)
-            )
-            for match in matches.reversed() {
-                guard let range = Range(match.range, in: result) else { continue }
-                let original = String(result[range])
-                result.replaceSubrange(
-                    range,
-                    with: preservingWordCase(of: original, in: replacement)
-                )
-            }
         }
         return result
     }
@@ -167,16 +128,6 @@ enum SelfCorrectionFormatter {
         var result = text
         result.replaceSubrange(runRange, with: original)
         return result
-    }
-
-    private static func preservingWordCase(of source: String, in replacement: String) -> String {
-        if source == source.uppercased() {
-            return replacement.uppercased()
-        }
-        guard source.first?.isUppercase == true,
-              let first = replacement.first
-        else { return replacement.lowercased() }
-        return String(first).uppercased() + replacement.dropFirst().lowercased()
     }
 
     /// Treats a standalone phrase such as "creatives is met een K" as an

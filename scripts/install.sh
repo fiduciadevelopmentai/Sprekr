@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT="${0:A:h:h}"
 source "$ROOT/scripts/product-identity.sh"
+source "$ROOT/scripts/sprekr-app-inventory.sh"
 APP_NAME="$SPREKR_PRODUCT_NAME"
 LEGACY_APP_NAME="$SPREKR_LEGACY_APPLICATION_NAME"
 BUNDLE_IDENTIFIER="$SPREKR_BUNDLE_IDENTIFIER"
@@ -10,6 +11,8 @@ DESTINATION="${SPREKR_INSTALL_DIR:-${KLIM_TALKS_INSTALL_DIR:-/Applications}}"
 AUDIO_INPUT_REQUIREMENT='=entitlement["com.apple.security.device.audio-input"]'
 LAUNCH_AFTER_INSTALL=1
 SOURCE_REQUESTED=0
+CLEANUP_STALE_APPS=1
+REMOVE_OTHER_INSTALLS=0
 STAGED_APP=""
 BACKUP_APP=""
 LEGACY_BACKUP_APP=""
@@ -18,11 +21,18 @@ usage() {
   cat <<'EOF'
 Usage:
   scripts/install.sh --source [--destination <directory>] [--no-launch]
+                     [--no-cleanup-stale-apps] [--remove-other-installs]
 
 Sprekr is source-only. This command creates or reuses one certificate-bound
 local signing identity in the login Keychain, builds with hardened runtime, and
 installs the verified app without sudo. Release artifacts, DMGs, Gatekeeper
 bypasses, and environment-supplied download URLs are intentionally unsupported.
+
+After a successful install, --cleanup-stale-apps (default on) removes repo
+build/debug and build/release Sprekr.app bundles so they cannot create a second
+Accessibility/Microphone row under com.klimtalks.app.development. Ad-hoc or
+development copies outside the destination are also removed. A second
+certificate-bound install elsewhere is only removed with --remove-other-installs.
 EOF
 }
 
@@ -51,6 +61,18 @@ while (( $# )); do
       ;;
     --no-launch)
       LAUNCH_AFTER_INSTALL=0
+      shift
+      ;;
+    --no-cleanup-stale-apps)
+      CLEANUP_STALE_APPS=0
+      shift
+      ;;
+    --cleanup-stale-apps)
+      CLEANUP_STALE_APPS=1
+      shift
+      ;;
+    --remove-other-installs)
+      REMOVE_OTHER_INSTALLS=1
       shift
       ;;
     --artifact|--sha256|--version)
@@ -205,8 +227,84 @@ copy_and_activate() {
     print "Migrated $LEGACY_APP_NAME.app to $APP_NAME.app without changing its bundle identity or local data."
   fi
   print "Installed verified $APP_NAME source build at $target"
+  cleanup_stale_apps "$target"
   if (( LAUNCH_AFTER_INSTALL )) && ! open "$target"; then
     print -u2 "warning: Sprekr was installed successfully but macOS did not open it. Open $target normally when ready."
+  fi
+}
+
+# Removes repo build apps and safe stale copies so System Settings does not keep
+# showing two Sprekr rows (production vs .development). Never edits TCC.
+cleanup_stale_apps() {
+  local installed="$1"
+  local installed_resolved="${installed:A}"
+  local app resolved root_resolved="${ROOT:A}"
+
+  print "Scanning for other $APP_NAME / $LEGACY_APP_NAME app bundles…"
+  local found=0
+  while IFS= read -r app; do
+    [[ -n "$app" ]] || continue
+    resolved="${app:A}"
+    [[ "$resolved" == "$installed_resolved" ]] && continue
+    found=1
+    print "  $(sprekr_describe_app_line "$app")"
+  done < <(sprekr_enumerate_candidate_apps)
+
+  if (( found == 0 )); then
+    print "No other $APP_NAME app bundles found."
+    return 0
+  fi
+
+  if (( CLEANUP_STALE_APPS == 0 )); then
+    print -u2 "warning: Leaving other app bundles in place (--no-cleanup-stale-apps)."
+    print -u2 "warning: Enable only the installed app in Accessibility/Microphone: $installed"
+    return 0
+  fi
+
+  while IFS= read -r app; do
+    [[ -n "$app" ]] || continue
+    resolved="${app:A}"
+    [[ "$resolved" == "$installed_resolved" ]] && continue
+
+    # Repo build outputs always create a second TCC client under .development.
+    if [[ "$resolved" == "$root_resolved/build/debug/$APP_NAME.app" \
+       || "$resolved" == "$root_resolved/build/release/$APP_NAME.app" ]]; then
+      if app_is_running "$app"; then
+        print -u2 "warning: Quit the development build at $app before it can be removed."
+        continue
+      fi
+      rm -rf "$app"
+      print "Removed build artifact: $app"
+      continue
+    fi
+
+    if sprekr_app_is_development_identity "$app"; then
+      if app_is_running "$app"; then
+        print -u2 "warning: Quit the development/ad-hoc app at $app before it can be removed."
+        continue
+      fi
+      rm -rf "$app"
+      print "Removed development/ad-hoc app: $app"
+      continue
+    fi
+
+    if (( REMOVE_OTHER_INSTALLS )); then
+      if app_is_running "$app"; then
+        fail "Quit ${app:t:r} at $app before --remove-other-installs can delete it."
+      fi
+      rm -rf "$app"
+      print "Removed other install (--remove-other-installs): $app"
+      continue
+    fi
+
+    print -u2 "warning: Leaving certificate-bound app at $app"
+    print -u2 "warning: Re-run with --remove-other-installs to delete it, or enable only $installed in Accessibility."
+  done < <(sprekr_enumerate_candidate_apps)
+
+  # Drop Dock tiles that still point at deleted build-tree / .development apps.
+  if [[ -x "$ROOT/scripts/cleanup-stale-dock-pins.py" ]] || [[ -f "$ROOT/scripts/cleanup-stale-dock-pins.py" ]]; then
+    /usr/bin/python3 "$ROOT/scripts/cleanup-stale-dock-pins.py" \
+      || print -u2 "warning: Could not refresh Dock pins; remove any leftover Sprekr icon manually."
   fi
 }
 

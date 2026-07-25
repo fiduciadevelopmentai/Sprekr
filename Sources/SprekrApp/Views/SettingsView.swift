@@ -345,6 +345,17 @@ struct SettingsView: View {
                 settingsDivider
 
                 SettingsRow(
+                    title: "Vocabulary assistance",
+                    detail: "Applies the built-in spellings for brands, devices and AI models, and repairs a word only when the local dictionary offers one clear match. Your Dictionary always wins."
+                ) {
+                    Toggle("Vocabulary assistance", isOn: binding(\.vocabularyAssist))
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                }
+
+                settingsDivider
+
+                SettingsRow(
                     title: "Learn immediate corrections",
                     detail: "When supported, watch only the text Sprekr just inserted and save one corrected spelling locally."
                 ) {
