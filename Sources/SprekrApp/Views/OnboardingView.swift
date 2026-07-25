@@ -1,5 +1,6 @@
 import AppKit
 import AVFoundation
+import SprekrCore
 import SwiftUI
 
 private enum OnboardingFinishPhase {
@@ -410,6 +411,11 @@ struct OnboardingView: View {
                 Text("Accessibility access is required to continue so Sprekr can place text in the field you selected.")
                     .font(SprekrTypography.body(12, relativeTo: .caption))
                     .foregroundStyle(SprekrPalette.secondaryText)
+                if Bundle.main.bundleIdentifier == SprekrIdentity.Compatibility.developmentBundleIdentifier {
+                    Text("This is a development build. System Settings may list two Sprekr rows — enable this development copy, or quit and open the installed Sprekr.app from Applications instead.")
+                        .font(SprekrTypography.body(12, relativeTo: .caption))
+                        .foregroundStyle(SprekrPalette.secondaryText)
+                }
             }
             permissionRefreshStatus
         }
