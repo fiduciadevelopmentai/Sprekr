@@ -29,7 +29,7 @@ cd Sprekr
 ./scripts/install.sh --source
 ```
 
-Windows 11 x64:
+Windows 11 x64 is currently in maintenance. We have run into some bugs and the team is working on them.
 
 ```powershell
 git clone https://github.com/fiduciadevelopmentai/Sprekr.git
