@@ -209,7 +209,9 @@ enum SentenceBoundaryFormatter {
         }
     }
 
-    private static func finiteVerbs(for language: RecognitionLanguage) -> Set<String> {
+    /// Shared with the question inference in `TranscriptFormatter`, which
+    /// needs the same closed list to tell "Hoe laat begint" from "Wat extra".
+    static func finiteVerbs(for language: RecognitionLanguage) -> Set<String> {
         let dutch: Set<String> = [
             "ben", "bent", "is", "zijn", "was", "waren", "heb", "hebt", "heeft", "hebben",
             "had", "hadden", "doe", "doet", "doen", "deed", "deden",

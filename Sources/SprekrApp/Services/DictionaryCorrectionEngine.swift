@@ -46,7 +46,9 @@ enum DictionaryCorrectionEngine {
 
         for rule in exactRules {
             for range in wholeTermRanges(of: rule.term, in: text) {
-                guard !occupiedRanges.contains(where: { rangesOverlap($0, range) }) else { continue }
+                guard !occupiedRanges.contains(where: { rangesOverlap($0, range) }),
+                      !isProtectedIdentifier(range, in: text)
+                else { continue }
                 let preferred = replacementText(
                     entries[rule.entryIndex].preferredSpelling,
                     for: range,
@@ -64,7 +66,10 @@ enum DictionaryCorrectionEngine {
         }
 
         for token in alphabeticTokenRanges(in: text) {
-            guard !occupiedRanges.contains(where: { rangesOverlap($0, token) }) else { continue }
+            guard !occupiedRanges.contains(where: { rangesOverlap($0, token) }),
+                  !isProtectedIdentifier(token, in: text),
+                  !isInsideDottedIdentifier(token, in: text)
+            else { continue }
             let original = (text as NSString).substring(with: token)
             guard let entryIndex = uniqueFuzzyEntry(
                 for: original,
@@ -105,9 +110,64 @@ enum DictionaryCorrectionEngine {
         for range: NSRange,
         in text: String
     ) -> String {
-        SpokenEmailFormatter.containsDictionaryRange(range, inEmailWithin: text)
-            ? preferredSpelling.lowercased()
-            : preferredSpelling
+        if SpokenEmailFormatter.containsDictionaryRange(range, inEmailWithin: text)
+            || isInsideDottedIdentifier(range, in: text) {
+            return preferredSpelling.lowercased()
+        }
+        // Sentence case has already run, so a lowercase preferred spelling
+        // that replaces the capitalized first word of a sentence keeps that
+        // capital. Brands with their own casing ("iPhone", "npm") are left as
+        // saved.
+        let source = text as NSString
+        let original = source.substring(with: range)
+        guard let originalFirst = original.first, originalFirst.isUppercase,
+              let preferredFirst = preferredSpelling.first, preferredFirst.isLowercase,
+              !preferredSpelling.dropFirst().contains(where: \.isUppercase),
+              !TermLexicon.isCaseLocked(preferredSpelling),
+              isSentenceStart(range, in: source)
+        else { return preferredSpelling }
+        return String(preferredFirst).uppercased() + preferredSpelling.dropFirst()
+    }
+
+    private static func isSentenceStart(_ range: NSRange, in source: NSString) -> Bool {
+        let prefix = source.substring(to: range.location)
+        return prefix.range(
+            of: #"(?:^|[.!?…]|\n|•)[ \t\n]*[\"“'‘(\[]*$"#,
+            options: .regularExpression
+        ) != nil
+    }
+
+    /// URLs, paths, hashtags and hostnames are identifiers; a Dictionary
+    /// spelling never rewrites part of one, except inside a mail address
+    /// where the lowercase preferred form is expected.
+    private static func isProtectedIdentifier(_ range: NSRange, in text: String) -> Bool {
+        let token = surroundingToken(of: range, in: text as NSString)
+        if token.contains("/") || token.contains("\\") || token.contains("#") { return true }
+        if token.contains("@") {
+            return !SpokenEmailFormatter.containsDictionaryRange(range, inEmailWithin: text)
+        }
+        return false
+    }
+
+    private static func isInsideDottedIdentifier(_ range: NSRange, in text: String) -> Bool {
+        guard !SpokenEmailFormatter.containsDictionaryRange(range, inEmailWithin: text) else { return false }
+        let source = text as NSString
+        let token = surroundingToken(of: range, in: source)
+            .trimmingCharacters(in: CharacterSet(charactersIn: ".,;:!?\"“”'‘’()[]"))
+        guard (token as NSString).length > range.length else { return false }
+        return token.range(of: #"[\p{L}\p{N}]\.[\p{L}\p{N}]"#, options: .regularExpression) != nil
+    }
+
+    private static func surroundingToken(of range: NSRange, in source: NSString) -> String {
+        func isSeparator(_ character: unichar) -> Bool {
+            guard let scalar = Unicode.Scalar(character) else { return true }
+            return CharacterSet.whitespacesAndNewlines.contains(scalar)
+        }
+        var start = range.location
+        while start > 0, !isSeparator(source.character(at: start - 1)) { start -= 1 }
+        var end = NSMaxRange(range)
+        while end < source.length, !isSeparator(source.character(at: end)) { end += 1 }
+        return source.substring(with: NSRange(location: start, length: end - start))
     }
 
     private static func unambiguousExactRules(
@@ -178,8 +238,12 @@ enum DictionaryCorrectionEngine {
         let after = swiftRange.upperBound == text.endIndex
             ? nil
             : text[swiftRange.upperBound...].first
-        return before.map { !$0.isLetter && !$0.isNumber } ?? true
-            && after.map { !$0.isLetter && !$0.isNumber } ?? true
+        // A hyphen binds: "well" is not a whole term inside "well-known".
+        func isWordCharacter(_ character: Character) -> Bool {
+            character.isLetter || character.isNumber || character == "-"
+        }
+        return before.map { !isWordCharacter($0) } ?? true
+            && after.map { !isWordCharacter($0) } ?? true
     }
 
     private static func alphabeticTokenRanges(in text: String) -> [NSRange] {

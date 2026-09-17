@@ -24,10 +24,34 @@ enum ImmediateCorrectionEngine {
               pair.1.count >= 2,
               pair.0.count <= 64,
               pair.1.count <= 64,
-              pair.0.caseInsensitiveCompare(pair.1) != .orderedSame || pair.0 != pair.1
+              isPlausibleSpellingFix(heard: pair.0, preferred: pair.1)
         else { return nil }
 
         return ImmediateSpellingCorrection(heard: pair.0, preferred: pair.1)
+    }
+
+    /// Only a respelling of the same word is learned. Replacing "microfoon"
+    /// with "camera" is an edit of meaning, and a case-only change is a style
+    /// choice for that one sentence; neither should become a permanent alias.
+    static func isPlausibleSpellingFix(heard: String, preferred: String) -> Bool {
+        let heardKey = DictionaryEntryPolicy.normalizedKey(heard)
+        let preferredKey = DictionaryEntryPolicy.normalizedKey(preferred)
+        guard heardKey != preferredKey,
+              let heardFirst = heardKey.first,
+              let preferredFirst = preferredKey.first,
+              heardFirst == preferredFirst
+        else { return false }
+
+        let heardCharacters = Array(heardKey)
+        let preferredCharacters = Array(preferredKey)
+        let longest = max(heardCharacters.count, preferredCharacters.count)
+        let maximumDistance = longest <= 7 ? 2 : 3
+        let distance = DictionaryCorrectionEngine.damerauLevenshteinDistance(
+            heardCharacters,
+            preferredCharacters,
+            limit: maximumDistance
+        )
+        return distance <= maximumDistance
     }
 
     private static func words(in text: String) -> [String] {

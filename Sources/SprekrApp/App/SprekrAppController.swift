@@ -732,18 +732,20 @@ final class SprekrAppController: ObservableObject {
                         options: options
                     )
                 } else {
+                    // Mixed dictation formats as `.automatic` here as well, so
+                    // "at sign" and "apenstaartje" both keep working.
                     let numberedSource = SpokenNumberFormatter.format(
                         transcribed.text,
-                        spokenLanguage: languagePlan.sourceLanguage,
+                        spokenLanguage: languagePlan.formattingLanguage,
                         outputLanguage: languagePlan.outputLanguage
                     )
                     let symbolizedSource = SpokenSymbolFormatter.format(
                         numberedSource,
-                        language: languagePlan.sourceLanguage
+                        language: languagePlan.formattingLanguage
                     )
                     formattedSource = SpokenEmailFormatter.format(
                         symbolizedSource,
-                        language: languagePlan.sourceLanguage
+                        language: languagePlan.formattingLanguage
                     )
                 }
                 guard !formattedSource.isEmpty else {
@@ -787,9 +789,16 @@ final class SprekrAppController: ObservableObject {
                     translationFailed = false
                 }
 
+                // A code-switched dictation that was not translated carries
+                // both languages, so Dutch- and English-scoped Dictionary terms
+                // both apply. The record itself keeps the delivered language.
+                let correctionLanguage: RecognitionLanguage =
+                    languagePlan.hasMixedSource && deliveredLanguage == languagePlan.sourceLanguage
+                        ? .automatic
+                        : deliveredLanguage
                 let corrected = try await self.dictionaryRepository.apply(
                     to: deliveredText,
-                    language: deliveredLanguage
+                    language: correctionLanguage
                 )
                 var record = TranscriptRecord(
                     text: corrected.text,
@@ -985,10 +994,15 @@ final class SprekrAppController: ObservableObject {
             do {
                 var entries = try await dictionaryRepository.all()
                 let heardKey = DictionaryEntryPolicy.normalizedKey(correction.heard)
+                // A word that is already an alias, or already someone's
+                // preferred spelling, is never re-learned: teaching a second
+                // target for it would only make the existing term ambiguous
+                // and silently switch it off.
                 if entries.contains(where: { entry in
-                    entry.aliases.contains(where: {
-                        DictionaryEntryPolicy.normalizedKey($0) == heardKey
-                    })
+                    DictionaryEntryPolicy.normalizedKey(entry.preferredSpelling) == heardKey
+                        || entry.aliases.contains(where: {
+                            DictionaryEntryPolicy.normalizedKey($0) == heardKey
+                        })
                 }) {
                     return
                 }

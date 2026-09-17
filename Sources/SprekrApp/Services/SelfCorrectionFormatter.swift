@@ -23,11 +23,19 @@ enum SelfCorrectionFormatter {
             pattern: #"(?<![\p{L}\p{N}])sprekr(?![\p{L}\p{N}])"#,
             options: [.caseInsensitive]
         ) else { return text }
-        var result = exactExpression.stringByReplacingMatches(
+        // Inside an address or hostname ("jan@sprekr.nl", "sprekr.com") the
+        // lowercase spelling is part of the identifier.
+        let source = text as NSString
+        var result = text
+        for match in exactExpression.matches(
             in: text,
-            range: NSRange(text.startIndex..., in: text),
-            withTemplate: "Sprekr"
-        )
+            range: NSRange(text.startIndex..., in: text)
+        ).reversed() {
+            guard !isIdentifierPart(match.range, in: source),
+                  let range = Range(match.range, in: result)
+            else { continue }
+            result.replaceSubrange(range, with: "Sprekr")
+        }
 
         // Parakeet commonly hears the stylized name as the ordinary Dutch word
         // "spreker". Correct that ambiguous form only beside an explicit app
@@ -58,6 +66,22 @@ enum SelfCorrectionFormatter {
             )
         }
         return result
+    }
+
+    private static func isIdentifierPart(_ range: NSRange, in source: NSString) -> Bool {
+        func isSeparator(_ character: unichar) -> Bool {
+            guard let scalar = Unicode.Scalar(character) else { return true }
+            return CharacterSet.whitespacesAndNewlines.contains(scalar)
+        }
+        var start = range.location
+        while start > 0, !isSeparator(source.character(at: start - 1)) { start -= 1 }
+        var end = NSMaxRange(range)
+        while end < source.length, !isSeparator(source.character(at: end)) { end += 1 }
+        let token = source.substring(with: NSRange(location: start, length: end - start))
+            .trimmingCharacters(in: CharacterSet(charactersIn: ".,;:!?\"“”'‘’()[]"))
+        guard (token as NSString).length > range.length else { return false }
+        return token.contains("@") || token.contains("/")
+            || token.range(of: #"[\p{L}\p{N}]\.[\p{L}\p{N}]"#, options: .regularExpression) != nil
     }
 
     /// Parakeet can occasionally end a cut-off recording with an echo such as
@@ -297,35 +321,44 @@ enum SelfCorrectionFormatter {
         in text: String,
         language: RecognitionLanguage
     ) -> String {
+        // Multi-word markers are unambiguous. A bare "nee", "no", "sorry" or
+        // "rather" is ordinary vocabulary ("ik zei nee tegen", "I would rather
+        // stay", "no-code") and only counts as a repair after a pause: a comma
+        // or a hesitation, which is removed together with the marker.
+        let hesitation = #"(?:eh|ehm|euh|uh|uhm|um|hm|hmm)"#
+        let pause = #"(?:(?<!\bja),[ \t]*(?:\#(hesitation)\b,?[ \t]+)?|\b\#(hesitation)\b,?[ \t]+)"#
+        let bareDutch = #"(?:nee|sorry|correctie)"#
+        let bareEnglish = #"(?:no|sorry|rather|correction)"#
+        let phraseDutch = #"(?<!wat[ \t])ik bedoel(?:[ \t]+eigenlijk)?|of beter(?:[ \t]+gezegd)?|of eigenlijk"#
+        let phraseEnglish = #"(?<!what[ \t])i mean|scratch that|strike that|or rather"#
+        let idiomTail = #"(?![ \t]*-)(?![ \t]+(?:hoor|toch|joh|zeg|dus|want|maar|echt|way|thanks|problem|matter|idea|longer|more|one|doubt)\b)"#
+
         let markers: String = {
             switch language {
             case .dutch:
-                #"nee|sorry|(?<!wat[ \t])ik bedoel|of beter|correctie"#
+                #"\#(pause)\#(bareDutch)\b\#(idiomTail)|\b(?:\#(phraseDutch))\b"#
             case .english:
-                #"no|sorry|(?<!what[ \t])i mean|rather|correction"#
+                #"\#(pause)\#(bareEnglish)\b\#(idiomTail)|\b(?:\#(phraseEnglish))\b"#
             case .automatic:
-                #"nee|no|sorry|(?<!wat[ \t])ik bedoel|(?<!what[ \t])i mean|of beter|rather|correctie|correction"#
+                #"\#(pause)(?:\#(bareDutch)|\#(bareEnglish))\b\#(idiomTail)|\b(?:\#(phraseDutch)|\#(phraseEnglish))\b"#
             }
         }()
         guard let expression = try? NSRegularExpression(
-            pattern: #"\b(?:\#(markers))\b"#,
-            options: [.caseInsensitive]
+            pattern: markers,
+            options: [.caseInsensitive, .useUnicodeWordBoundaries]
         ) else { return text }
 
         var result = text
-        for _ in 0..<4 {
-            let fullRange = NSRange(result.startIndex..., in: result)
-            guard let match = expression.firstMatch(in: result, range: fullRange),
+        var searchStart = result.startIndex
+        for _ in 0..<6 {
+            let searchRange = NSRange(searchStart..., in: result)
+            guard let match = expression.firstMatch(in: result, range: searchRange),
                   let markerRange = Range(match.range, in: result)
             else { break }
 
             let leftBoundary = result[..<markerRange.lowerBound].lastIndex {
                 ".!?\n".contains($0)
             }.map { result.index(after: $0) } ?? result.startIndex
-
-            guard result[leftBoundary..<markerRange.lowerBound].contains(where: { $0.isLetter || $0.isNumber }) else {
-                break
-            }
 
             let rightBoundary = result[markerRange.upperBound...].firstIndex {
                 ".!?\n".contains($0)
@@ -334,13 +367,22 @@ enum SelfCorrectionFormatter {
 
             let left = trimmedRepairFragment(String(result[leftBoundary..<markerRange.lowerBound]))
             let right = trimmedRepairFragment(String(result[markerRange.upperBound..<rightBoundary]))
-            guard !left.isEmpty, !right.isEmpty else { break }
+            // A marker that opens a sentence ("Nee, wacht.") or closes one has
+            // nothing to repair; keep looking further along instead of giving up.
+            guard left.contains(where: { $0.isLetter || $0.isNumber }), !right.isEmpty else {
+                searchStart = markerRange.upperBound
+                continue
+            }
 
-            let merged = mergeExplicitRepair(left: left, right: right) + terminal
+            let leadingWhitespace = String(
+                result[leftBoundary..<markerRange.lowerBound].prefix { $0.isWhitespace }
+            )
+            let merged = leadingWhitespace + mergeExplicitRepair(left: left, right: right) + terminal
             let replacementEnd = rightBoundary < result.endIndex
                 ? result.index(after: rightBoundary)
                 : rightBoundary
             result.replaceSubrange(leftBoundary..<replacementEnd, with: merged)
+            searchStart = result.startIndex
         }
         return result
     }
