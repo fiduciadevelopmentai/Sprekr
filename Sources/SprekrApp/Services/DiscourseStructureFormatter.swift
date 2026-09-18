@@ -159,6 +159,14 @@ enum DiscourseStructureFormatter {
                   let ordinal = pointOrdinal(source.substring(with: numberRange))
             else { return nil }
 
+            // "zie punt 1 van het contract", "versie punt 2": a reference to a
+            // point, not the start of one.
+            let prefix = source.substring(to: kindRange.location)
+            if prefix.range(
+                of: #"(?:^|[^\p{L}])(?:zie|van|in|onder|bij|volgens|naar|lees|over|versie|artikel|see|under|section|version|article|at|to|from)[ \t]+$"#,
+                options: [.regularExpression, .caseInsensitive]
+            ) != nil { return nil }
+
             let rawKind = source.substring(with: kindRange).discourseFolded
             let displayKind = rawKind == "point" ? "Point" : "Punt"
             let qualifierRange = match.range(withName: "qualifier")
@@ -301,6 +309,16 @@ enum DiscourseStructureFormatter {
                 in: text,
                 range: NSRange(text.startIndex..., in: text)
             ) {
+                // "the first time", "at first", "twenty-first": an ordinal
+                // inside a noun phrase is not an enumerator.
+                let markerRange = match.range(withName: "marker")
+                if markerRange.location != NSNotFound {
+                    let prefix = source.substring(to: markerRange.location)
+                    if prefix.range(
+                        of: #"(?:(?:^|[^\p{L}])(?:the|a|an|my|our|your|his|her|their|its|this|that|at|for|in|on|of|very|every|de|het|een|mijn|onze)[ \t]+|-)$"#,
+                        options: [.regularExpression, .caseInsensitive]
+                    ) != nil { continue }
+                }
                 let connectorRange = match.range(withName: "connector")
                 let connector: String
                 if connectorRange.location == NSNotFound {
@@ -386,12 +404,12 @@ enum DiscourseStructureFormatter {
         language: RecognitionLanguage
     ) -> NSRange? {
         let dutch = [
-            "de volgende punten", "volgende punten", "deze punten",
+            "de volgende punten", "volgende punten",
             "een aantal punten", "de volgende onderwerpen", "volgende onderwerpen",
             "de volgende onderdelen", "volgende onderdelen",
         ]
         let english = [
-            "the following points", "following points", "these points",
+            "the following points", "following points",
             "several points", "the following topics", "following topics",
             "the following subjects", "following subjects",
         ]

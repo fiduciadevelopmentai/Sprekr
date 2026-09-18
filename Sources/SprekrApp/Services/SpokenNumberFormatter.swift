@@ -38,6 +38,27 @@ enum SpokenNumberFormatter {
         "rekeningnummer", "account number",
     ]
 
+    /// Cues are whole words: "update", "conversie" and "barcode" must not
+    /// freeze a sentence because they happen to contain "date", "versie" or
+    /// "code".
+    private static let protectedContextExpression: NSRegularExpression? = {
+        let alternation = protectedContextCues
+            .map { NSRegularExpression.escapedPattern(for: $0).replacingOccurrences(of: " ", with: #"[ \t]+"#) }
+            .joined(separator: "|")
+        return try? NSRegularExpression(
+            pattern: #"(?<![\p{L}\p{N}])(?:\#(alternation))(?![\p{L}\p{N}])"#,
+            options: [.caseInsensitive]
+        )
+    }()
+
+    private static func hasProtectedContextCue(_ sentence: String) -> Bool {
+        guard let expression = protectedContextExpression else { return false }
+        return expression.firstMatch(
+            in: sentence,
+            range: NSRange(sentence.startIndex..., in: sentence)
+        ) != nil
+    }
+
     static func format(
         _ transcript: String,
         spokenLanguage: RecognitionLanguage,
@@ -310,13 +331,25 @@ enum SpokenNumberFormatter {
         )).numberFolded
         let sentence = sentenceContext(containing: first.range.location, in: source).numberFolded
 
-        if protectedContextCues.contains(where: sentence.contains) { return false }
+        if hasProtectedContextCue(sentence) { return false }
 
         let protectedIdioms = [
             "een voor een", "een van de", "het een en het ander", "op een dag", "een paar",
-            "one by one", "one of the", "the one", "one another",
+            "in een keer", "op een lijn", "een en ander", "een of andere", "nog een keer",
+            "one by one", "one of the", "the one", "one another", "no one", "this one", "that one",
+            "which one", "one-off", "one off", "one-shot", "one shot", "one day", "one thing",
+            "each one", "every one", "other one", "one more",
         ]
         if protectedIdioms.contains(where: context.contains) { return false }
+
+        // "zes min drie" and "tien min vijf": a spoken minus after a number is
+        // a subtraction or a clock time, not a negative number.
+        if first.lexemes.first == .negative {
+            let index = allTokens.firstIndex { $0.range == first.range } ?? 0
+            let previousText = source.substring(with: NSRange(location: 0, length: first.range.location))
+            if previousText.range(of: #"\d[ \t]*$"#, options: .regularExpression) != nil { return false }
+            if index > 0, isValueBearing(allTokens[index - 1]) { return false }
+        }
 
         let immediatePrefix = source.substring(with: NSRange(
             location: max(0, first.range.location - 40),
@@ -344,6 +377,10 @@ enum SpokenNumberFormatter {
         }
         if immediatePrefix.range(of: #"(?:\bom|\bat)$"#, options: .regularExpression) != nil,
            immediateSuffix.range(of: #"^(?:uur|o'clock)\b"#, options: .regularExpression) != nil {
+            return false
+        }
+        // "drie puntjes" / "three dots" is the spoken ellipsis command.
+        if immediateSuffix.range(of: #"^(?:puntjes|dots)\b"#, options: .regularExpression) != nil {
             return false
         }
 
@@ -406,11 +443,13 @@ enum SpokenNumberFormatter {
         if cues.contains(where: { prefix.range(of: #"\b\#($0)$"#, options: .regularExpression) != nil }) {
             return true
         }
+        // Time words are left out on purpose: "een dag wachten", "een jaar
+        // geleden" and "een uur later" use the article far more often than the
+        // number, so they need a neighbouring digit or number word instead.
         let units = [
             "euro", "dollar", "pond", "yen", "procent", "percent", "meter", "kilometer",
-            "centimeter", "millimeter", "kilo", "gram", "liter", "jaar", "year", "maand",
-            "month", "week", "dag", "day", "uur", "hour", "minuut", "minute", "seconde",
-            "second", "graad", "graden", "degree", "degrees",
+            "centimeter", "millimeter", "kilo", "gram", "liter",
+            "graad", "graden", "degree", "degrees",
         ]
         if units.contains(where: { suffix.range(of: #"^\#($0)\b"#, options: .regularExpression) != nil }) {
             return true
@@ -499,8 +538,10 @@ enum SpokenNumberFormatter {
         in text: String,
         outputLanguage: RecognitionLanguage
     ) -> String {
+        // Ten or more digits is an identifier or an international phone
+        // number, never a quantity to group.
         guard let expression = try? NSRegularExpression(
-            pattern: #"(?<![\p{L}\p{N}_])([+-]?)(\d{5,})(?:([.,])(\d+))?(?![\p{L}\p{N}_])"#
+            pattern: #"(?<![\p{L}\p{N}_])([+-]?)(\d{5,9})(?:([.,])(\d+))?(?![\p{L}\p{N}_])"#
         ) else { return text }
         let source = text as NSString
         var result = text
@@ -509,7 +550,12 @@ enum SpokenNumberFormatter {
             range: NSRange(text.startIndex..., in: text)
         ).reversed() {
             let sentence = sentenceContext(containing: match.range.location, in: source).numberFolded
-            if protectedContextCues.contains(where: sentence.contains) { continue }
+            if hasProtectedContextCue(sentence) { continue }
+            let prefix = source.substring(with: NSRange(location: 0, length: match.range.location)).numberFolded
+            if prefix.range(
+                of: #"(?<![\p{L}])(?:bel|call|tel|nummer|number|nr|id)\.?[^\d\n.!?]{0,24}$"#,
+                options: [.regularExpression, .caseInsensitive]
+            ) != nil { continue }
             let integer = source.substring(with: match.range(at: 2))
             guard !integer.hasPrefix("0"), let value = UInt64(integer) else { continue }
             let sign = source.substring(with: match.range(at: 1))

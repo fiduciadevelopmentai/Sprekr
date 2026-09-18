@@ -541,7 +541,7 @@ struct ProductLogicTests {
         let formatted = TranscriptFormatter.format(transcript, language: .dutch)
         #expect(formatted == [
             "Oké.",
-            "Ten eerste zou je dit voor mij kunnen doen? Zou je duidelijk kunnen opnoemen wat je nodig hebt.",
+            "Ten eerste zou je dit voor mij kunnen doen? Zou je duidelijk kunnen opnoemen wat je nodig hebt?",
             "En ten tweede zou je duidelijk kunnen laten weten wat het is.",
         ].joined(separator: "\n\n"))
         #expect(!formatted.contains("•"))

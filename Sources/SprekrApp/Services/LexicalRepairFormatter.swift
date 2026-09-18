@@ -89,7 +89,11 @@ enum LexicalRepairFormatter {
             end += 1
         }
         let token = source.substring(with: NSRange(location: start, length: end - start))
+        // Hashtags, snake_case identifiers and dotted names are spelled on
+        // purpose; the local dictionaries have no say over them.
         return token.contains("/") || token.contains("\\") || token.contains("@")
+            || token.contains("#") || token.contains("_")
+            || token.range(of: #"[\p{L}\p{N}]\.[\p{L}\p{N}]"#, options: .regularExpression) != nil
     }
 
     private static func isTokenSeparator(_ character: unichar) -> Bool {

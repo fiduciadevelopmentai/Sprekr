@@ -46,8 +46,13 @@ enum SpokenEmailFormatter {
     private static let providerAliases = [
         "laif": "live",
         "lijf": "live",
-        "life": "live",
         "lijve": "live",
+    ]
+
+    /// Ordinary words one edit away from a provider: "jan@email.com" and
+    /// "jan@cloud.com" are what was said, not typos for Gmail and iCloud.
+    private static let providerCorrectionExclusions: Set<String> = [
+        "email", "cloud", "life", "mail", "live", "look",
     ]
 
     private static let topLevelDomainAliases = [
@@ -197,10 +202,52 @@ enum SpokenEmailFormatter {
             pattern: pattern,
             options: [.caseInsensitive, .useUnicodeWordBoundaries]
         ) else { return [] }
-        return expression.matches(
+        let explicit = expression.matches(
             in: text,
             range: NSRange(text.startIndex..., in: text)
         ).map(\.range)
+        return (explicit + bareAtCueRanges(in: text, language: language))
+            .sorted { $0.location < $1.location }
+    }
+
+    /// A bare spoken "at" ("jan at gmail punt com") is the most common way an
+    /// address is actually dictated. It only counts when the words after it
+    /// are unmistakably a domain: a known mail provider, or a label followed
+    /// by a spoken dot and a top-level domain. Because "at" is an ordinary
+    /// English preposition, English dictation additionally needs a provider
+    /// or an explicit e-mail lead-in before the local part.
+    private static func bareAtCueRanges(
+        in text: String,
+        language: RecognitionLanguage
+    ) -> [NSRange] {
+        let providerAlternation = providers.joined(separator: "|")
+        let providerDomain = #"[ \t]+(?:\#(providerAlternation))(?![\p{L}\p{N}])"#
+        // The symbol pass has usually already turned "punt nl" into ".nl".
+        let dottedDomain = #"[ \t]+[\p{L}\p{N}][\p{L}\p{N}-]*(?:[ \t]+(?:punt|puntje|dot)[ \t]+|\.)[\p{L}]{2,24}(?![\p{L}\p{N}])"#
+        let word: String = language == .dutch ? "(?:at|et)" : "at"
+        guard let expression = try? NSRegularExpression(
+            pattern: #"(?<=[\p{L}\p{N}][ \t])\#(word)(?=\#(providerDomain)|\#(dottedDomain))"#,
+            options: [.caseInsensitive, .useUnicodeWordBoundaries]
+        ), let providerExpression = try? NSRegularExpression(
+            pattern: #"^\#(providerDomain)"#,
+            options: [.caseInsensitive]
+        ) else { return [] }
+
+        let source = text as NSString
+        return expression.matches(
+            in: text,
+            range: NSRange(text.startIndex..., in: text)
+        ).map(\.range).filter { range in
+            guard language != .dutch else { return true }
+            let suffix = source.substring(from: NSMaxRange(range))
+            if providerExpression.firstMatch(
+                in: suffix,
+                range: NSRange(suffix.startIndex..., in: suffix)
+            ) != nil { return true }
+            let prefix = source.substring(to: range.location)
+            let leadInEnd = lastEmailLeadInEnd(in: prefix, language: language)
+            return leadInEnd > 0 && range.location - leadInEnd <= 48
+        }
     }
 
     private static func localCandidate(
@@ -415,7 +462,9 @@ enum SpokenEmailFormatter {
 
     private static func correctedProvider(_ value: String) -> String {
         if let alias = providerAliases[value] { return alias }
-        guard !value.contains("-"), value.count >= 5 else { return value }
+        guard !value.contains("-"), value.count >= 5,
+              !providerCorrectionExclusions.contains(value)
+        else { return value }
         let matches = providers.compactMap { provider -> (String, Int)? in
             let distance = editDistance(value, provider, limit: 1)
             return distance <= 1 ? (provider, distance) : nil

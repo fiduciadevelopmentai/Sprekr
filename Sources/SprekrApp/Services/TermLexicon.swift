@@ -24,6 +24,11 @@ enum TermLexicon {
         let variants: [String]
         let category: Category
         let contextCues: [String]
+        /// Variants that are real words in Dutch or English (`appel`,
+        /// `amazone`), so they need the same context cue as the canonical
+        /// form. Every other variant of a guarded entry is a phonetic
+        /// non-word and is corrected unconditionally.
+        let guardedVariants: [String]
 
         /// Marks a canonical form whose lowercase opening is deliberate
         /// (`iPhone`, `npm`, `macOS`), so neither this pass nor the
@@ -31,6 +36,15 @@ enum TermLexicon {
         let isCaseLocked: Bool
 
         var isGuarded: Bool { !contextCues.isEmpty }
+
+        /// True when this particular spelling needs a context cue before it
+        /// may be rewritten.
+        func requiresCue(for matched: String) -> Bool {
+            guard isGuarded else { return false }
+            let key = TermLexicon.normalizedKey(matched)
+            return key == TermLexicon.normalizedKey(canonical)
+                || guardedVariants.contains { TermLexicon.normalizedKey($0) == key }
+        }
 
         /// A canonical form carrying any capital is a brand spelling and is
         /// emitted verbatim. A fully lowercase one is an ordinary word, so the
@@ -44,12 +58,14 @@ enum TermLexicon {
             _ variants: [String],
             category: Category,
             cues: [String] = [],
+            guardedVariants: [String] = [],
             caseLocked: Bool = false
         ) {
             self.canonical = canonical
-            self.variants = variants
+            self.variants = variants + guardedVariants
             self.category = category
             self.contextCues = cues
+            self.guardedVariants = guardedVariants
             self.isCaseLocked = caseLocked
         }
     }
@@ -82,7 +98,7 @@ enum TermLexicon {
             let matched = source.substring(with: match.range)
             guard let entry = variantIndex[normalizedKey(matched)] else { continue }
             guard !isProtected(match.range, in: text, emailRanges: emailRanges) else { continue }
-            if entry.isGuarded, !hasContextCue(for: entry, around: match.range, in: source) {
+            if entry.requiresCue(for: matched), !hasContextCue(for: entry, around: match.range, in: source) {
                 continue
             }
             let replacement = entry.usesVerbatimCasing
@@ -142,7 +158,16 @@ enum TermLexicon {
             end += 1
         }
         let token = source.substring(with: NSRange(location: start, length: end - start))
-        return token.contains("/") || token.contains("\\") || token.contains("@")
+        if token.contains("/") || token.contains("\\") || token.contains("@") { return true }
+        // "github.com", "next.config.js": a term that is only part of a dotted
+        // identifier keeps that identifier's casing. A term that is the whole
+        // token ("node.js") is still normalized.
+        let trimmed = token.trimmingCharacters(in: CharacterSet(charactersIn: ".,;:!?\"“”'‘’()[]"))
+        guard (trimmed as NSString).length > range.length else { return false }
+        return trimmed.range(
+            of: #"[\p{L}\p{N}]\.[\p{L}\p{N}]"#,
+            options: .regularExpression
+        ) != nil
     }
 
     private static func isTokenSeparator(_ character: unichar) -> Bool {
@@ -247,10 +272,10 @@ extension TermLexicon {
     fileprivate static let entries: [Entry] = [
         // Apple hardware
         Entry("MacBook", ["macboek", "mac boek", "mac book", "mekboek", "mekbook"], category: .hardware),
-        Entry("MacBook Air", ["macboek air", "mac boek air", "macbook er"], category: .hardware),
+        Entry("MacBook Air", ["macboek air", "mac boek air"], category: .hardware),
         Entry("MacBook Pro", ["macboek pro", "mac boek pro"], category: .hardware),
-        Entry("iPhone", ["ai phone", "ei phone", "i phone", "iefoon", "ai foon", "eye phone"], category: .hardware, caseLocked: true),
-        Entry("iPad", ["ai pad", "i pad", "ei pad", "eye pad"], category: .hardware, caseLocked: true),
+        Entry("iPhone", ["ai phone", "ei phone", "iefoon", "ai foon", "eye phone"], category: .hardware, caseLocked: true),
+        Entry("iPad", ["ai pad", "ei pad", "eye pad"], category: .hardware, caseLocked: true),
         Entry("iMac", ["ai mac", "i mac", "ei mac"], category: .hardware, caseLocked: true),
         Entry("AirPods", ["air pods", "airpod", "er pods", "air pot"], category: .hardware),
         Entry("Apple Watch", ["apple wats", "appel watch", "apple wodge"], category: .hardware),
@@ -271,7 +296,7 @@ extension TermLexicon {
         Entry("Keychain", ["key chain", "kie chain"], category: .platform),
         Entry("Spotlight", ["spot light", "spotlicht"], category: .platform),
         Entry("Finder", ["fainder"], category: .platform, cues: ["mac", "macos", "map", "folder", "venster", "window", "bestand", "file"]),
-        Entry("Terminal", ["terminaal"], category: .platform, cues: ["command", "commando", "shell", "zsh", "bash", "venster"]),
+        Entry("Terminal", [], category: .platform, cues: ["command", "commando", "shell", "zsh", "bash", "venster"], guardedVariants: ["terminaal"]),
 
         // Developer tools
         Entry("GitHub", ["gitte hub", "git hub", "gethub", "gitub", "githup", "guithub"], category: .tooling),
@@ -292,6 +317,15 @@ extension TermLexicon {
         Entry("Turbopack", ["turbo pack", "turbopek"], category: .tooling),
         Entry("SwiftLint", ["swift lint"], category: .tooling),
         Entry("CocoaPods", ["cocoa pods", "koko pods"], category: .tooling),
+        Entry("PowerShell", ["power shell", "pauwer shell", "powersjel"], category: .tooling),
+        Entry("Playwright", ["play wright", "pleeraait", "playwrite"], category: .tooling),
+        Entry("Terraform", ["terra form", "terraforum"], category: .tooling),
+        Entry("Raycast", ["ray cast", "reecast"], category: .tooling),
+        Entry("Obsidian", ["obsidiaan"], category: .tooling, cues: ["vault", "notitie", "notities", "note", "notes", "markdown", "plugin"]),
+        Entry("Jira", ["djira", "jiera"], category: .tooling),
+        Entry("Sentry", ["sentrie"], category: .tooling, cues: ["error", "errors", "fout", "fouten", "logging", "monitoring", "crash", "issue"]),
+        Entry("Bun", ["bunn"], category: .tooling, cues: ["install", "runtime", "npm", "package", "script", "javascript", "typescript"]),
+        Entry("Deno", ["dieno", "deeno"], category: .tooling),
 
         // Languages and frameworks
         Entry("JavaScript", ["java script", "sjavascript", "djava script", "javascrip"], category: .language),
@@ -314,7 +348,7 @@ extension TermLexicon {
         Entry("Swift", ["swiftt"], category: .language, cues: ["package", "code", "xcode", "apple", "concurrency", "compiler", "actor", "protocol"]),
         Entry("Kotlin", ["cotlin", "kotlien"], category: .language),
         Entry("PostgreSQL", ["postgres q l", "postgre sql"], category: .language),
-        Entry("Postgres", ["postgress", "post gres", "postgrest"], category: .language),
+        Entry("Postgres", ["postgress", "post gres"], category: .language),
         Entry("SQLite", ["sequel lite", "es q l lite"], category: .language),
         Entry("GraphQL", ["graph q l", "grafql"], category: .language),
         Entry("JSON", ["djeeson", "jay son", "dzjeson"], category: .language),
@@ -330,6 +364,12 @@ extension TermLexicon {
         Entry("URL", ["u r l", "joe er el"], category: .language),
         Entry("UI", ["u i"], category: .language, cues: ["design", "component", "ontwerp", "interface", "swift", "kit", "library"]),
         Entry("UX", ["u x", "joe eks"], category: .language, cues: ["design", "ontwerp", "research", "writer", "interface", "user"]),
+        Entry("Prisma", ["prizma", "prisma orm"], category: .language),
+        Entry("Redis", ["reddis", "riedis"], category: .language),
+        Entry("MongoDB", ["mongo db", "mongo dee bee", "mongodb"], category: .language),
+        Entry("MySQL", ["my sql", "mai sequel", "my sequel", "mysql"], category: .language),
+        Entry("FastAPI", ["fast api", "fast a p i", "fastapi"], category: .language),
+        Entry("Rust", ["rustt"], category: .language, cues: ["cargo", "crate", "compiler", "borrow", "language", "taal"]),
 
         // Services
         Entry("Vercel", ["versel", "vercell", "wercel"], category: .service),
@@ -350,10 +390,31 @@ extension TermLexicon {
         Entry("Spotify", ["spotifai"], category: .service),
         Entry("Google", ["gogle", "goegle"], category: .service),
         Entry("Microsoft", ["micro soft", "maikrosoft"], category: .service),
-        Entry("Apple", ["appel"], category: .service, cues: ["mac", "macbook", "iphone", "ipad", "silicon", "developer", "watch", "store", "music"]),
-        Entry("Amazon", ["amazone"], category: .service, cues: ["web", "services", "aws", "bestelling", "order", "prime"]),
+        Entry("Apple", [], category: .service, cues: ["mac", "macbook", "iphone", "ipad", "silicon", "developer", "watch", "store", "music"], guardedVariants: ["appel"]),
+        Entry("Amazon", [], category: .service, cues: ["web", "services", "aws", "bestelling", "order", "prime"], guardedVariants: ["amazone"]),
         Entry("AWS", ["a w s", "ee doebeljoe es"], category: .service),
         Entry("Azure", ["ezjur", "asuur"], category: .service, cues: ["microsoft", "cloud", "portal", "functions", "devops", "storage"]),
+        Entry("Gmail", ["g mail", "gee mail", "gmeel"], category: .service),
+        Entry("Outlook", ["out look", "outloek"], category: .service),
+        Entry("iCloud", ["ai cloud", "i cloud", "ei cloud", "eye cloud"], category: .service, caseLocked: true),
+        Entry("Safari", ["safarie"], category: .service, cues: ["browser", "tab", "tabblad", "apple", "mac", "iphone", "website", "webkit"]),
+        Entry("Chrome", ["kroom", "google chroom"], category: .service, cues: ["browser", "tab", "tabblad", "google", "extensie", "extension", "website", "devtools"]),
+        Entry("Bluetooth", ["blue tooth", "bloetoef", "bloetoet"], category: .hardware),
+        Entry("USB-C", ["usb c", "u s b c", "joe es bee see"], category: .hardware),
+        Entry("Dropbox", ["drop box", "dropboks"], category: .service),
+        Entry("Google Drive", ["google draif", "google dryve"], category: .service),
+        Entry("Shopify", ["shoppify", "sjopifai", "shopifai"], category: .service),
+        Entry("WordPress", ["word press", "wordpres", "wortpress"], category: .service),
+        Entry("Webflow", ["web flow", "webflo"], category: .service),
+        Entry("Framer", ["freemer"], category: .service, cues: ["site", "website", "design", "ontwerp", "template", "landing", "pagina", "page"]),
+        Entry("Canva", ["kanva", "canfa"], category: .service),
+        Entry("Zapier", ["zappier", "zeepier"], category: .service),
+        Entry("n8n", ["n acht n", "en acht en", "n eight n", "en eight en"], category: .service, caseLocked: true),
+        Entry("Airtable", ["air table", "airtabel"], category: .service),
+        Entry("HubSpot", ["hub spot", "hubspot", "hupspot"], category: .service),
+        Entry("Discord", ["dis cord", "diskord"], category: .service),
+        Entry("Teams", ["tiems"], category: .service, cues: ["microsoft", "meeting", "vergadering", "call", "chat", "kanaal", "channel"]),
+        Entry("Zoom", [], category: .service, cues: ["meeting", "vergadering", "call", "webinar"], guardedVariants: ["zoem"]),
 
         // AI models and companies
         Entry("ChatGPT", ["chat gpt", "tsjat gpt", "sjet gpt", "chat g p t", "chat gee pee tee", "chat jipietie"], category: .artificialIntelligence),
@@ -363,13 +424,22 @@ extension TermLexicon {
         Entry("Sonnet", ["sonet"], category: .artificialIntelligence, cues: ["claude", "anthropic", "model", "opus", "haiku"]),
         Entry("Opus", ["oppus"], category: .artificialIntelligence, cues: ["claude", "anthropic", "model", "sonnet", "haiku"]),
         Entry("Gemini", ["gemenie", "djemini"], category: .artificialIntelligence, cues: ["google", "model", "pro", "flash", "prompt", "deepmind"]),
-        Entry("Copilot", ["co pilot", "kopilot", "copiloot"], category: .artificialIntelligence),
+        Entry("Copilot", ["co pilot", "kopilot"], category: .artificialIntelligence),
         Entry("GPT", ["gee pee tee", "g p t", "jipietie"], category: .artificialIntelligence),
         Entry("LLM", ["l l m", "el el em"], category: .artificialIntelligence),
         Entry("NVIDIA", ["invidia", "en vidia"], category: .artificialIntelligence),
         Entry("Hugging Face", ["hugging fase", "hugingface"], category: .artificialIntelligence),
         Entry("Whisper", ["wisper"], category: .artificialIntelligence, cues: ["model", "openai", "transcriptie", "transcription", "asr", "audio", "speech"]),
-        Entry("Parakeet", ["parakiet", "para keet"], category: .artificialIntelligence, cues: ["model", "nvidia", "tdt", "asr", "transcriptie", "transcription", "fluidaudio"]),
+        Entry("Parakeet", ["para keet"], category: .artificialIntelligence, cues: ["model", "nvidia", "tdt", "asr", "transcriptie", "transcription", "fluidaudio"], guardedVariants: ["parakiet"]),
+        Entry("Claude Code", ["klode code", "claude kode", "cloud code"], category: .artificialIntelligence),
+        Entry("Codex", ["kodex", "codeks"], category: .artificialIntelligence, cues: ["openai", "agent", "cli", "model", "prompt", "code"]),
+        Entry("Mistral", ["mistraal", "mistrall"], category: .artificialIntelligence),
+        Entry("Perplexity", ["perplexitie", "perpleksity", "perplexety"], category: .artificialIntelligence),
+        Entry("Midjourney", ["mid journey", "midjourny", "midjurney"], category: .artificialIntelligence),
+        Entry("DeepSeek", ["deep seek", "diepseek", "deepsiek"], category: .artificialIntelligence),
+        Entry("Ollama", ["olama", "o lama"], category: .artificialIntelligence),
+        Entry("Llama", [], category: .artificialIntelligence, cues: ["meta", "model", "ollama", "open source", "weights", "llm"], guardedVariants: ["lama"]),
+        Entry("Grok", ["grock"], category: .artificialIntelligence, cues: ["xai", "x ai", "model", "elon", "twitter", "prompt"]),
 
         // Dutch/English code-switch spellings
         Entry("tweak", ["tweek"], category: .codeSwitch),
@@ -398,5 +468,20 @@ extension TermLexicon {
         Entry("pull request", ["pul request", "poel request"], category: .codeSwitch),
         Entry("merge conflict", ["merge conflickt"], category: .codeSwitch),
         Entry("open source", ["opensource", "open sauce"], category: .codeSwitch),
+        Entry("fixen", ["fiksen", "fixsen"], category: .codeSwitch),
+        Entry("gefixt", ["gefikst", "gefixed", "gefixd"], category: .codeSwitch),
+        Entry("checken", ["tsjekken", "tjekken", "sjekken"], category: .codeSwitch),
+        Entry("gecheckt", ["getsjekt", "getjekt", "gechecked"], category: .codeSwitch),
+        Entry("sharen", ["sjeren", "sheren"], category: .codeSwitch),
+        Entry("geshared", ["gesjeerd", "geshaard"], category: .codeSwitch),
+        Entry("builden", ["bilden"], category: .codeSwitch),
+        Entry("runnen", ["runnun"], category: .codeSwitch),
+        Entry("scrollen", ["skrollen", "scrolen"], category: .codeSwitch),
+        Entry("downloaden", ["downlowden", "daunloaden"], category: .codeSwitch),
+        Entry("uploaden", ["uplowden", "uppploaden"], category: .codeSwitch),
+        Entry("installen", ["instollen"], category: .codeSwitch),
+        Entry("skippen", ["skipen"], category: .codeSwitch),
+        Entry("prompten", ["promten", "prompen"], category: .codeSwitch),
+        Entry("geprompt", ["gepromt", "geprompd"], category: .codeSwitch),
     ]
 }
