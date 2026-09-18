@@ -12,6 +12,10 @@ enum SpokenSymbolFormatter {
         case dot
         case bareOperator
         case percentage
+        /// A punctuation name that is also an ordinary noun ("zet daar een
+        /// komma", "the Oxford comma"). It is a command unless a determiner
+        /// introduces it.
+        case punctuationWord
     }
 
     private enum Token: Int, CaseIterable {
@@ -128,7 +132,10 @@ enum SpokenSymbolFormatter {
 
         let quoted = formatShortQuotes(in: trimmed, language: language)
         let candidates = findCandidates(in: quoted, language: language)
-        let containsStrongCue = candidates.contains { $0.command.safety == .always }
+        let containsStrongCue = candidates.contains {
+            $0.command.safety == .always
+                || ($0.command.safety == .punctuationWord && !followsDeterminer($0, in: quoted))
+        }
         let resolved = resolveCandidates(
             candidates,
             in: quoted,
@@ -222,7 +229,16 @@ enum SpokenSymbolFormatter {
                 || isWholeUtterance(candidate, in: text)
         case .percentage:
             return isWholeSentenceCommand(candidate, in: text, optionalLeadIns: ["of", "or"])
+        case .punctuationWord:
+            return !followsDeterminer(candidate, in: text)
         }
+    }
+
+    private static func followsDeterminer(_ candidate: Candidate, in text: String) -> Bool {
+        let source = text as NSString
+        let prefix = source.substring(to: candidate.range.location).symbolFolded
+        let determiners = #"(?:een|het|dit|dat|die|deze|geen|elke|iedere|mijn|jouw|zijn|haar|onze|a|an|the|this|that|no|any|every|each|my|your|our|oxford)[ \t]+$"#
+        return prefix.range(of: determiners, options: .regularExpression) != nil
     }
 
     private static func isProtectedDashPhrase(_ candidate: Candidate, in text: String) -> Bool {
@@ -240,11 +256,23 @@ enum SpokenSymbolFormatter {
         let source = text as NSString
         let suffix = source.substring(from: NSMaxRange(candidate.range)).symbolFolded
         let prefix = source.substring(to: candidate.range.location).symbolFolded
-        let topLevelDomains = #"(?:com|nl|org|net|io|dev|app|ai|be|de|eu|co|uk)\b"#
-        guard suffix.range(of: #"^[ \t]+\#(topLevelDomains)"#, options: .regularExpression) != nil else {
+        let topLevelDomains = #"(?:com|nl|org|net|io|dev|app|ai|be|de|eu|co|uk|info|xyz|cloud|tech|fr|es|ch|se|us|ca|au|tv|ly|sh|gg|store|shop|site|link|design|studio|agency|tools|blog|news)\b"#
+        guard prefix.range(of: #"[\p{L}\p{N}]\s*$"#, options: .regularExpression) != nil else {
             return false
         }
-        return prefix.range(of: #"[\p{L}\p{N}]\s*$"#, options: .regularExpression) != nil
+        if suffix.range(of: #"^[ \t]+\#(topLevelDomains)"#, options: .regularExpression) != nil {
+            return true
+        }
+        // "www punt sprekr punt nl": the first dot joins a known host label to
+        // a domain that itself ends in a spoken dot and a top-level domain.
+        let hostLabels = #"(?:www|api|app|mail|docs|blog|shop|dev|staging|m|beta|test)"#
+        guard prefix.range(of: #"(?<![\p{L}\p{N}])\#(hostLabels)\s*$"#, options: .regularExpression) != nil else {
+            return false
+        }
+        return suffix.range(
+            of: #"^[ \t]+[\p{L}\p{N}-]+[ \t]+(?:punt|dot)[ \t]+\#(topLevelDomains)"#,
+            options: .regularExpression
+        ) != nil
     }
 
     private static func isTerminalPunctuation(_ candidate: Candidate, in text: String) -> Bool {
@@ -387,6 +415,13 @@ enum SpokenSymbolFormatter {
             )
         }
 
+        // "hashtag Sprekr" is one tag.
+        result = replacing(
+            #"\#(NSRegularExpression.escapedPattern(for: Token.hash.marker))[ \t]+(?=[\p{L}\p{N}])"#,
+            in: result,
+            with: Token.hash.marker
+        )
+
         for token in [Token.percent, .degree] {
             let marker = NSRegularExpression.escapedPattern(for: token.marker)
             result = replacing(
@@ -447,11 +482,11 @@ enum SpokenSymbolFormatter {
             Command(token: .plus, safety: .bareOperator, aliases: ["plus"]),
             Command(token: .equals, safety: .always, aliases: ["is gelijk teken", "isgelijkteken", "gelijkteken"]),
             Command(token: .period, safety: .dot, aliases: ["punt"]),
-            Command(token: .comma, safety: .always, aliases: ["komma"]),
+            Command(token: .comma, safety: .punctuationWord, aliases: ["komma"]),
             Command(token: .colon, safety: .always, aliases: ["dubbele punt"]),
             Command(token: .semicolon, safety: .always, aliases: ["puntkomma"]),
-            Command(token: .questionMark, safety: .always, aliases: ["vraagteken"]),
-            Command(token: .exclamationMark, safety: .always, aliases: ["uitroepteken"]),
+            Command(token: .questionMark, safety: .punctuationWord, aliases: ["vraagteken"]),
+            Command(token: .exclamationMark, safety: .punctuationWord, aliases: ["uitroepteken"]),
             Command(token: .ellipsis, safety: .always, aliases: ["drie puntjes", "beletselteken"]),
             Command(token: .percent, safety: .always, aliases: ["procentteken", "percentageteken"]),
             Command(token: .percent, safety: .percentage, aliases: ["percentage"]),
@@ -490,12 +525,12 @@ enum SpokenSymbolFormatter {
             Command(token: .plus, safety: .bareOperator, aliases: ["plus"]),
             Command(token: .equals, safety: .always, aliases: ["equals sign", "equal sign"]),
             Command(token: .period, safety: .dot, aliases: ["dot", "period"]),
-            Command(token: .period, safety: .always, aliases: ["full stop"]),
-            Command(token: .comma, safety: .always, aliases: ["comma"]),
+            Command(token: .period, safety: .punctuationWord, aliases: ["full stop"]),
+            Command(token: .comma, safety: .punctuationWord, aliases: ["comma"]),
             Command(token: .colon, safety: .always, aliases: ["colon"]),
             Command(token: .semicolon, safety: .always, aliases: ["semicolon"]),
-            Command(token: .questionMark, safety: .always, aliases: ["question mark"]),
-            Command(token: .exclamationMark, safety: .always, aliases: ["exclamation mark"]),
+            Command(token: .questionMark, safety: .punctuationWord, aliases: ["question mark"]),
+            Command(token: .exclamationMark, safety: .punctuationWord, aliases: ["exclamation mark"]),
             Command(token: .ellipsis, safety: .always, aliases: ["ellipsis", "three dots"]),
             Command(token: .percent, safety: .always, aliases: ["percent sign", "percentage sign"]),
             Command(token: .percent, safety: .percentage, aliases: ["percentage"]),

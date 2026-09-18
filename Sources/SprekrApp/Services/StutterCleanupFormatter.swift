@@ -324,14 +324,15 @@ enum StutterCleanupFormatter {
         }
     }
 
+    /// Doubles that are grammatical in one language are kept in both: a Dutch
+    /// dictation with English phrases still formats as `.dutch` when the mix
+    /// is small, and "I had had enough" must survive that just as "de was was
+    /// droog" and "die die auto" must.
     private static func grammaticalDoubles(for language: RecognitionLanguage) -> Set<String> {
-        let dutch: Set<String> = ["dat"]
+        let dutch: Set<String> = ["dat", "die", "was", "in", "het"]
         let english: Set<String> = ["that", "had", "is", "was"]
-        switch language {
-        case .dutch: return dutch
-        case .english: return english
-        case .automatic: return dutch.union(english)
-        }
+        _ = language
+        return dutch.union(english)
     }
 
     private static func likelyDisfluentSingleWords(for language: RecognitionLanguage) -> Set<String> {

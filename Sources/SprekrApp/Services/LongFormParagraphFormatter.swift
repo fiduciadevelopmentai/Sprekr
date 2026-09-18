@@ -11,8 +11,14 @@ enum LongFormParagraphFormatter {
     }
 
     static func structure(_ text: String, language: RecognitionLanguage) -> String {
+        // A spoken "nieuwe regel" is a single line break the user asked for;
+        // each line is structured on its own so the break survives.
         text.components(separatedBy: "\n\n")
-            .map { structureParagraph($0, language: language) }
+            .map { paragraph in
+                paragraph.components(separatedBy: "\n")
+                    .map { structureParagraph($0, language: language) }
+                    .joined(separator: "\n")
+            }
             .joined(separator: "\n\n")
     }
 
